@@ -1,10 +1,11 @@
 {
   "name": "paseo-prompt-suggestions",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "files": [
     "paseo-plugin.json",
     "OVERVIEW.md",
+    "CHANGELOG.md",
     "index.client.tsx",
     "index.server.ts",
     "assets/",
@@ -28,7 +29,7 @@
     "vitest": "^3.2.4",
     "zod": "^4.4.3"
   },
-  "description": "Predicts your next prompt after each agent turn and shows it as the composer placeholder.",
+  "description": "Predicts your next prompt after each agent turn using the Claude Code CLI and shows it as the composer placeholder.",
   "license": "MIT",
   "repository": {
     "type": "git",

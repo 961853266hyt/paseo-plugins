@@ -1,7 +1,7 @@
 {
   "id": "prompt-suggestions",
   "name": "Prompt suggestions",
-  "description": "Predicts your next prompt after each agent turn; Tab accepts it.",
+  "description": "Predicts your next prompt after each agent turn using the Claude Code CLI; Tab accepts it.",
   "media": [
     "assets/desktop-placeholder.png",
     "assets/phone-card.png"
