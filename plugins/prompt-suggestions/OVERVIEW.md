@@ -6,7 +6,7 @@ Suggestions start from the second exchange of a conversation and only follow tur
 
 ## Setup
 
-The daemon host needs the `claude` CLI, signed in. Suggestions work for every agent provider, but the prediction itself always runs on Claude Haiku through that CLI.
+Requires Paseo 0.11.2 or later. The daemon host needs the `claude` CLI, signed in. Suggestions work for every agent provider, but the prediction itself always runs on Claude Haiku through that CLI.
 
 ## What it sends and where
 
