@@ -3,7 +3,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-/** Below the daemon's 30 second hook timeout, so a slow model never outlives its hook. */
+/**
+ * Budget for one suggestion, time spent waiting for a free slot included. Below the daemon's 30
+ * second hook timeout, so a slow model never outlives its hook.
+ */
 export const GENERATION_TIMEOUT_MS = 20_000;
 const MAX_OUTPUT_CHARS = 256 * 1024;
 const MAX_DETAIL_CHARS = 300;
@@ -52,6 +55,8 @@ export interface GenerateInput {
   transcript: string;
   model: string;
   signal: AbortSignal;
+  /** What is left of the budget; defaults to all of it. */
+  timeoutMs?: number;
   runner?: ClaudeRunner;
 }
 
@@ -67,7 +72,7 @@ export async function generateSuggestion(input: GenerateInput): Promise<string |
       args: buildClaudeArgs(input.model),
       stdin: `Conversation:\n${input.transcript}\n\nThe developer's next message:`,
       cwd,
-      timeoutMs: GENERATION_TIMEOUT_MS,
+      timeoutMs: input.timeoutMs ?? GENERATION_TIMEOUT_MS,
       signal: input.signal,
     });
     if (input.signal.aborted) return null;

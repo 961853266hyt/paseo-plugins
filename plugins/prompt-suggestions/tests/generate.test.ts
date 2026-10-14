@@ -72,6 +72,18 @@ describe("generateSuggestion", () => {
     expect(runs[0]?.timeoutMs).toBeLessThan(30_000);
   });
 
+  test("gives the run only what is left of the budget", async () => {
+    const { runner, runs } = fakeRunner('{"subtype":"success","result":"run the tests"}');
+    await generateSuggestion({
+      transcript: "User: hi",
+      model: "haiku",
+      signal: new AbortController().signal,
+      timeoutMs: 12_000,
+      runner,
+    });
+    expect(runs[0]?.timeoutMs).toBe(12_000);
+  });
+
   test("throws the CLI's reason when it exits with an error", async () => {
     const { runner } = fakeRunner("", 1);
     const run = generateSuggestion({
