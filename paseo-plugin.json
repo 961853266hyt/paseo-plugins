@@ -1,0 +1,9 @@
+{
+  "id": "paseo-prompt-suggestions",
+  "name": "Prompt suggestions",
+  "description": "Predicts your next prompt after each agent turn; Tab accepts it.",
+  "media": [],
+  "requirements": {
+    "paseo": ">=0.11.2"
+  }
+}
