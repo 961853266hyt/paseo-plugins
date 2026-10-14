@@ -82,8 +82,10 @@ export async function generateSuggestion(input: GenerateInput): Promise<string |
 
 /**
  * Headless, tool-less Claude Code run: no MCP servers, hooks, skills or saved session, so the
- * prediction never acts and never touches the user's conversation. The flag set follows
- * PromptKit (MIT, github.com/hungcuong9125/paseo-prompt-kit).
+ * prediction never acts and never touches the user's conversation. No user, project or local
+ * settings either, so the user's CLAUDE.md and memory stay out of the prompt. Not `--bare`, which
+ * only accepts an API key and would break subscription sign-in. The flag set follows PromptKit
+ * (MIT, github.com/hungcuong9125/paseo-prompt-kit).
  */
 export function buildClaudeArgs(model: string): string[] {
   return [
@@ -97,6 +99,8 @@ export function buildClaudeArgs(model: string): string[] {
     "--disallowedTools",
     "*",
     "--strict-mcp-config",
+    "--setting-sources",
+    "",
     "--settings",
     JSON.stringify({ disableAllHooks: true }),
     "--disable-slash-commands",
