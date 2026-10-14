@@ -1,7 +1,12 @@
 import { describe, expect, test } from "vitest";
 import type { PluginLifecycleEvents } from "@getpaseo/plugin/server";
+import type { SuggestionSettings } from "../shared/settings";
 import type { SuggestionRow } from "../shared/suggestion-row";
-import { createSuggestionCoordinator, type RowWriter } from "../server/suggestions";
+import {
+  createSuggestionCoordinator,
+  type GenerationRequest,
+  type RowWriter,
+} from "../server/suggestions";
 
 type TurnEndedEvent = PluginLifecycleEvents["agent.turn_ended"];
 
@@ -50,20 +55,28 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-function coordinatorReplying(reply: string | null | Promise<string | null>) {
+const defaults: SuggestionSettings = { providers: [], model: "haiku" };
+
+function coordinatorReplying(
+  reply: string | null | Promise<string | null>,
+  settings: SuggestionSettings | null = defaults,
+) {
   let next = 0;
+  const requests: GenerationRequest[] = [];
   const signals: AbortSignal[] = [];
   const logs: string[] = [];
   const coordinator = createSuggestionCoordinator({
-    generate: async (_, signal) => {
-      signals.push(signal);
+    settings: () => settings,
+    generate: async (request) => {
+      requests.push(request);
+      signals.push(request.signal);
       return reply;
     },
     createRowId: () => `row-${++next}`,
     log: (message) => logs.push(message),
     logError: (message, error) => logs.push(`${message}: ${String(error)}`),
   });
-  return { coordinator, signals, logs };
+  return { coordinator, requests, signals, logs };
 }
 
 const live = () => new AbortController().signal;
@@ -115,6 +128,37 @@ describe("suggestion coordinator", () => {
     expect(signals).toHaveLength(0);
   });
 
+  test("passes the transcript and the configured model to the generator", async () => {
+    const { coordinator, requests } = coordinatorReplying("run the tests", {
+      providers: [],
+      model: "sonnet",
+    });
+    await coordinator.turnEnded(turnEnded(), recorder().write, live());
+    expect(requests[0]?.model).toBe("sonnet");
+    expect(requests[0]?.transcript).toContain("Want me to run the tests?");
+  });
+
+  test("suggests only for the configured providers", async () => {
+    const { coordinator, signals } = coordinatorReplying("run the tests", {
+      providers: ["claude"],
+      model: "haiku",
+    });
+    const { write, writes } = recorder();
+    const codex = turnEnded({ agent: { ...turnEnded().agent, id: "agent-2", provider: "codex" } });
+    await coordinator.turnEnded(codex, write, live());
+    expect(signals).toHaveLength(0);
+    await coordinator.turnEnded(turnEnded(), write, live());
+    expect(writes).toEqual([{ rowId: "row-1", row: { status: "ready", text: "run the tests" } }]);
+  });
+
+  test("suggests nothing while settings are unavailable", async () => {
+    const { coordinator, signals } = coordinatorReplying("run the tests", null);
+    const { write, writes } = recorder();
+    await coordinator.turnEnded(turnEnded(), write, live());
+    expect(writes).toEqual([]);
+    expect(signals).toHaveLength(0);
+  });
+
   test("drops replies the filter rejects and logs what the model said", async () => {
     const { coordinator, logs } = coordinatorReplying("Looks good, thanks!");
     const { write, writes } = recorder();
@@ -126,6 +170,7 @@ describe("suggestion coordinator", () => {
   test("logs a failed generation and still dismisses on the next turn", async () => {
     const logs: string[] = [];
     const coordinator = createSuggestionCoordinator({
+      settings: () => defaults,
       generate: async () => {
         throw new Error("claude -p failed (exit 1): not logged in");
       },
@@ -172,6 +217,7 @@ describe("suggestion coordinator", () => {
   test("keeps working after a row write fails", async () => {
     const errors: string[] = [];
     const coordinator = createSuggestionCoordinator({
+      settings: () => defaults,
       generate: async () => "run the tests",
       createRowId: () => "row-1",
       log: () => undefined,

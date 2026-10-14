@@ -1,4 +1,5 @@
 import type { PluginLifecycleEvents } from "@getpaseo/plugin/server";
+import { type SuggestionSettings, suggestsFor } from "../shared/settings";
 import type { SuggestionRow } from "../shared/suggestion-row";
 import { normalizeSuggestion } from "./filter";
 import { buildTranscript, countUserMessages } from "./transcript";
@@ -8,8 +9,16 @@ type TurnEndedEvent = PluginLifecycleEvents["agent.turn_ended"];
 /** Writes this plugin's row for one agent; the same row id replaces the earlier row in place. */
 export type RowWriter = (rowId: string, row: SuggestionRow) => Promise<void>;
 
+export interface GenerationRequest {
+  transcript: string;
+  model: string;
+  signal: AbortSignal;
+}
+
 export interface SuggestionCoordinatorDeps {
-  generate(transcript: string, signal: AbortSignal): Promise<string | null>;
+  /** Current settings, or null while they load or when they are invalid: then nothing is suggested. */
+  settings(): SuggestionSettings | null;
+  generate(request: GenerationRequest): Promise<string | null>;
   createRowId(): string;
   log(message: string): void;
   logError(message: string, error: unknown): void;
@@ -67,6 +76,8 @@ export function createSuggestionCoordinator(deps: SuggestionCoordinatorDeps): Su
       // Like Claude Code, the first exchange gets no suggestion.
       const hasHistory = countUserMessages(event.timeline) >= 2;
       if (!isTopLevel || !isCompleted || !hasHistory) return;
+      const settings = deps.settings();
+      if (!settings || !suggestsFor(settings, event.agent.provider)) return;
 
       const transcript = buildTranscript(event.timeline);
       if (transcript.length === 0) return;
@@ -77,7 +88,7 @@ export function createSuggestionCoordinator(deps: SuggestionCoordinatorDeps): Su
       state.controller = controller;
       let raw: string | null;
       try {
-        raw = await deps.generate(transcript, controller.signal);
+        raw = await deps.generate({ transcript, model: settings.model, signal: controller.signal });
       } catch (error) {
         if (state.controller === controller) state.controller = null;
         deps.logError(`Suggestion generation failed for agent ${event.agent.id}`, error);
