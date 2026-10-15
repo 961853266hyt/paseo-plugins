@@ -135,6 +135,8 @@ export function createSuggestionCoordinator(deps: SuggestionCoordinatorDeps): Su
 
       const transcript = buildTranscript(event.timeline);
       if (transcript.length === 0) return;
+      // Cancelled while the dismissal was written: a listener added now would never hear the abort.
+      if (hookSignal.aborted) return;
 
       const controller = new AbortController();
       const abortWithHook = () => controller.abort();
@@ -153,10 +155,18 @@ export function createSuggestionCoordinator(deps: SuggestionCoordinatorDeps): Su
           }
           return;
         }
+        // Read again: a save while this waited applies to it, so an excluded provider stays excluded.
+        const latest = deps.settings();
+        if (!latest || !suggestsFor(latest, event.agent.provider)) {
+          release();
+          if (state.controller === controller) state.controller = null;
+          deps.log(`No suggestion for agent ${event.agent.id}: settings changed while it waited`);
+          return;
+        }
         try {
           raw = await deps.generate({
             transcript,
-            model: settings.model,
+            model: latest.model,
             timeoutMs: GENERATION_TIMEOUT_MS - (Date.now() - startedAt),
             signal: controller.signal,
           });

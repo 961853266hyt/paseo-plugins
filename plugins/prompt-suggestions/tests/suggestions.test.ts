@@ -221,6 +221,24 @@ describe("suggestion coordinator", () => {
     expect(writes).toEqual([]);
   });
 
+  test("generates nothing when the hook was cancelled before the generation started", async () => {
+    const { coordinator, requests } = coordinatorReplying("run the tests");
+    const { write, writes } = recorder();
+    await coordinator.turnEnded(turnEnded(), write, live());
+    const hook = new AbortController();
+    // Cancelled while the previous suggestion is being dismissed, before any listener exists.
+    const cancelling: RowWriter = async (rowId, row) => {
+      hook.abort();
+      await write(rowId, row);
+    };
+    await coordinator.turnEnded(turnEnded({ turnId: "turn-3" }), cancelling, hook.signal);
+    expect(requests).toHaveLength(1);
+    expect(writes.map(({ rowId, row }) => `${rowId}:${row.status}`)).toEqual([
+      "row-1:ready",
+      "row-1:dismissed",
+    ]);
+  });
+
   test("keeps working after a row write fails", async () => {
     const errors: string[] = [];
     const coordinator = createSuggestionCoordinator({
@@ -243,13 +261,13 @@ describe("generation limit", () => {
     vi.useRealTimers();
   });
 
-  function coordinatorWaiting() {
+  function coordinatorWaiting(settings: () => SuggestionSettings | null = () => defaults) {
     let next = 0;
     const runs: { request: GenerationRequest; reply: ReturnType<typeof deferred<string | null>> }[] =
       [];
     const logs: string[] = [];
     const coordinator = createSuggestionCoordinator({
-      settings: () => defaults,
+      settings,
       generate: (request) => {
         const reply = deferred<string | null>();
         runs.push({ request, reply });
@@ -311,6 +329,30 @@ describe("generation limit", () => {
 
     expect(runs).toHaveLength(2);
     expect(writes.map(({ rowId }) => rowId)).toEqual(["row-1", "row-2"]);
+  });
+
+  test("applies settings saved while a generation waited for a slot", async () => {
+    let settings = defaults;
+    const { coordinator, runs, logs } = coordinatorWaiting(() => settings);
+    const { write } = recorder();
+    const busy = ["agent-1", "agent-2"].map((id) =>
+      coordinator.turnEnded(endedFor(id), write, live()),
+    );
+    const codex = turnEnded({ agent: { ...turnEnded().agent, id: "agent-3", provider: "codex" } });
+    const queuedCodex = coordinator.turnEnded(codex, write, live());
+    const queuedClaude = coordinator.turnEnded(endedFor("agent-4"), write, live());
+    await flushPromises();
+
+    settings = { providers: ["claude"], model: "sonnet" };
+    runs[0]?.reply.resolve("run the tests");
+    await queuedCodex;
+    await flushPromises();
+
+    // The Codex conversation is never sent; the queued Claude one runs on the new model.
+    expect(runs.map((run) => run.request.model)).toEqual(["haiku", "haiku", "sonnet"]);
+    expect(logs).toContain("No suggestion for agent agent-3: settings changed while it waited");
+    for (const run of runs) run.reply.resolve("run the tests");
+    await Promise.all([...busy, queuedClaude]);
   });
 
   test("gives up waiting before the budget runs out", async () => {
