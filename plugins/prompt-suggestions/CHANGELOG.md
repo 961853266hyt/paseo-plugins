@@ -2,8 +2,9 @@
 
 ## 0.2.0
 
-- Added settings under Settings → Plugins → Prompt suggestions: which agent providers get
-  suggestions, and the model each prediction runs on. The defaults, every provider and Haiku,
+- Added settings, opened from the ⋯ menu of Prompt suggestions under Settings → Plugins: whether
+  every agent or only Claude agents get suggestions, and which model predictions run on: the latest
+  Haiku, Sonnet or Opus, or a specific Claude model. The defaults, every agent and the latest Haiku,
   keep the earlier behaviour. Changes apply without reloading the plugin.
 - Predictions no longer load your Claude Code user, project or local settings, so your personal
   `~/.claude/CLAUDE.md` stays out of them and they use fewer input tokens.

@@ -20,7 +20,8 @@ export default function contribute(client: PluginClientContext) {
   });
   client.addSettingsScreen({
     id: "suggestions",
-    title: "Prompt suggestions",
+    // The menu item sits in this plugin's own menu, so it names the action, not the plugin.
+    title: "Settings",
     icon: "Sparkles",
     Component: SuggestionSettingsScreen,
   });

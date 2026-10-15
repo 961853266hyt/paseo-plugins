@@ -25,8 +25,3 @@ export type SuggestionSettings = z.output<typeof suggestionSettings.schema>;
 export function suggestsFor(settings: SuggestionSettings, provider: string): boolean {
   return settings.providers.length === 0 || settings.providers.includes(provider);
 }
-
-/** "claude, codex" or "claude codex" as typed in the settings screen. */
-export function parseProviders(text: string): string[] {
-  return [...new Set(text.split(/[\s,]+/).filter((provider) => provider.length > 0))];
-}

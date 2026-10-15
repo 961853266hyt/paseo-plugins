@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { parseProviders, suggestionSettings, suggestsFor } from "../shared/settings";
+import { suggestionSettings, suggestsFor } from "../shared/settings";
 
 describe("suggestion settings", () => {
   test("default to every provider and Haiku, as before settings existed", () => {
@@ -18,14 +18,5 @@ describe("suggestion settings", () => {
     expect(suggestsFor({ providers: [], model: "haiku" }, "opencode")).toBe(true);
     expect(suggestsFor({ providers: ["claude"], model: "haiku" }, "claude")).toBe(true);
     expect(suggestsFor({ providers: ["claude"], model: "haiku" }, "codex")).toBe(false);
-  });
-
-  test("read the provider list as typed", () => {
-    expect(parseProviders(" claude, codex  opencode,,claude ")).toEqual([
-      "claude",
-      "codex",
-      "opencode",
-    ]);
-    expect(parseProviders("  ")).toEqual([]);
   });
 });

@@ -1,15 +1,67 @@
-import { type PluginSurfaceProps, type SettingsState, useSettings } from "@getpaseo/plugin/client";
+import {
+  type PluginSurfaceProps,
+  type SettingsState,
+  usePaseo,
+  useSettings,
+} from "@getpaseo/plugin/client";
 import {
   SettingsAction,
   SettingsCard,
-  SettingsInput,
   SettingsSection,
+  SettingsSelect,
 } from "@getpaseo/plugin/client/ui";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Text } from "react-native";
-import { parseProviders, suggestionSettings } from "../shared/settings";
+import { suggestionSettings } from "../shared/settings";
 
 type ReadySettings = Extract<SettingsState<typeof suggestionSettings.schema>, { status: "ready" }>;
+
+interface Option {
+  label: string;
+  value: string;
+}
+
+const EVERY_AGENT = "every";
+
+// Other values are provider IDs; every agent is stored as an empty list.
+const agentOptions: Option[] = [
+  { label: "All agents", value: EVERY_AGENT },
+  { label: "Claude agents only", value: "claude" },
+];
+
+// Claude Code aliases, so each follows the newest model of its family.
+const latestModels: Option[] = [
+  { label: "Latest Haiku", value: "haiku" },
+  { label: "Latest Sonnet", value: "sonnet" },
+  { label: "Latest Opus", value: "opus" },
+];
+
+/**
+ * The aliases, then the Claude models Paseo offers its own agents. Only the aliases until that list
+ * loads, and if it fails.
+ */
+function useModelOptions(): Option[] {
+  const paseo = usePaseo();
+  const [models, setModels] = useState<Option[]>([]);
+  useEffect(() => {
+    let active = true;
+    paseo.providers.listModels("claude").then(
+      (result) => {
+        if (!active) return;
+        const listed = (result.models ?? []).filter(
+          // 1M-context variants cost more and gain nothing on a short transcript.
+          (model) => model.isSelectable !== false && !model.id.endsWith("[1m]"),
+        );
+        setModels(listed.map((model) => ({ label: model.label, value: model.id })));
+      },
+      () => undefined,
+    );
+    return () => {
+      active = false;
+    };
+  }, [paseo]);
+  return useMemo(() => [...latestModels, ...models], [models]);
+}
 
 export function SuggestionSettingsScreen({ theme }: PluginSurfaceProps) {
   const settings = useSettings(suggestionSettings);
@@ -30,44 +82,51 @@ export function SuggestionSettingsScreen({ theme }: PluginSurfaceProps) {
       </SettingsSection>
     );
   }
-  // A new revision, saved here or on another client, starts a fresh draft from the saved values.
-  return <SettingsForm key={settings.revision} settings={settings} />;
+  return <SettingsForm settings={settings} style={style} />;
 }
 
-function SettingsForm({ settings }: { settings: ReadySettings }) {
-  // Saved against the revision the draft started from, so another client's save is not overwritten.
-  const [revision] = useState(settings.revision);
-  const [providers, setProviders] = useState(settings.values.providers.join(", "));
-  const [model, setModel] = useState(settings.values.model);
-  const save = useCallback(() => {
-    void settings.save({ providers: parseProviders(providers), model }, revision);
-  }, [settings, providers, model, revision]);
+function SettingsForm({ settings, style }: { settings: ReadySettings; style: { color: string } }) {
+  const modelOptions = useModelOptions();
+  const changeAgents = useCallback(
+    (agents: string) => {
+      const providers = agents === EVERY_AGENT ? [] : [agents];
+      void settings.save({ ...settings.values, providers }, settings.revision);
+    },
+    [settings],
+  );
+  const changeModel = useCallback(
+    (model: string) => {
+      void settings.save({ ...settings.values, model }, settings.revision);
+    },
+    [settings],
+  );
+  const { providers, model } = settings.values;
   return (
     <SettingsSection title="Prompt suggestions">
       <SettingsCard>
-        <SettingsInput
-          label="Agent providers"
-          hint="Provider IDs such as claude, codex or opencode, separated by commas. Leave empty to suggest for every agent."
-          initialValue={providers}
-          placeholder="Every agent"
-          onChangeText={setProviders}
+        <SettingsSelect
+          label="Suggest for"
+          hint="Each prediction sends the recent conversation to Anthropic. Choose Claude agents only to keep conversations with other agents off it."
+          // A list saved by an earlier build shows as is until another option is chosen.
+          value={providers.length === 0 ? EVERY_AGENT : providers.join(", ")}
+          options={agentOptions}
           disabled={settings.saving}
+          onValueChange={changeAgents}
         />
-        <SettingsInput
+        <SettingsSelect
           label="Model"
-          hint="Passed to claude --model: an alias such as haiku or sonnet, or a full model name."
-          initialValue={model}
-          onChangeText={setModel}
+          hint="Latest follows the newest model of each family. Haiku is the fastest; larger models predict more slowly and use more of your Claude usage."
+          value={model}
+          options={modelOptions}
           disabled={settings.saving}
-        />
-        <SettingsAction
-          label="Apply to the next suggestion"
-          actionLabel="Save"
-          error={settings.saveError}
-          disabled={settings.saving}
-          onPress={save}
+          onValueChange={changeModel}
         />
       </SettingsCard>
+      {settings.saveError ? (
+        <Text accessibilityRole="alert" style={style}>
+          {settings.saveError}
+        </Text>
+      ) : null}
     </SettingsSection>
   );
 }

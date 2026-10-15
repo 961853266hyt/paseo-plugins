@@ -10,16 +10,16 @@ Requires Paseo 0.11.2 or later and the Claude Code CLI (`claude`) installed and 
 
 ## Settings
 
-Under Settings → Plugins → Prompt suggestions, shared by every client of the host:
+In Settings → Plugins, open the ⋯ menu of Prompt suggestions and choose Settings. The settings are shared by every client of the host:
 
-- **Agent providers**: the providers whose agents get suggestions, such as `claude`, `codex` or `opencode`, separated by commas. Empty, the default, means every agent. Set it to `claude` to keep conversations with other agents from being sent to Anthropic.
-- **Model**: what the CLI runs each prediction on, as passed to `claude --model`: an alias such as `haiku` (the default) or `sonnet`, or a full model name.
+- **Suggest for**: All agents, the default, or Claude agents only. Choose Claude agents only to keep conversations with Codex, OpenCode and other agents from being sent to Anthropic.
+- **Model**: Latest Haiku (the default), Latest Sonnet or Latest Opus, which follow the newest model of each family, or a specific Claude model from the list Paseo offers for Claude agents. Larger models predict more slowly and use more of your Claude usage.
 
-Saved changes apply from the next prediction, without reloading the plugin.
+A change is saved as soon as you choose it and applies from the next prediction, without reloading the plugin.
 
 ## What it sends and where
 
-After each completed turn, the plugin takes the most recent part of the conversation (user and agent messages, plus one line per tool call with its name and status, about 6,000 characters at most) and passes it to `claude -p` on the daemon host, which sends it to Anthropic. Unless you limit the agent providers in the settings, this applies to every agent: with Codex, OpenCode or any other non-Claude agent, that part of the conversation still goes to Anthropic to make the prediction. The run has no tools, no MCP servers, no hooks and no saved session, so it cannot act on your project and does not appear in your Claude Code history. It also loads none of your Claude Code settings, so your personal `~/.claude/CLAUDE.md` is not sent along. It counts toward your Claude usage like any other request. Suggestions arrive two to five seconds after a turn ends.
+After each completed turn, the plugin takes the most recent part of the conversation (user and agent messages, plus one line per tool call with its name and status, about 6,000 characters at most) and passes it to `claude -p` on the daemon host, which sends it to Anthropic. Unless you choose Claude agents only in the settings, this applies to every agent: with Codex, OpenCode or any other non-Claude agent, that part of the conversation still goes to Anthropic to make the prediction. The run has no tools, no MCP servers, no hooks and no saved session, so it cannot act on your project and does not appear in your Claude Code history. It also loads none of your Claude Code settings, so your personal `~/.claude/CLAUDE.md` is not sent along. It counts toward your Claude usage like any other request. Suggestions arrive two to five seconds after a turn ends.
 
 At most two predictions run at once across all agents; the rest wait their turn. A prediction that cannot start within 15 seconds is skipped, and one still waiting when the agent starts its next turn never runs.
 
