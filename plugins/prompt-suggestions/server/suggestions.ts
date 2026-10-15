@@ -1,15 +1,32 @@
 import type { PluginLifecycleEvents } from "@getpaseo/plugin/server";
+import { type SuggestionSettings, suggestsFor } from "../shared/settings";
 import type { SuggestionRow } from "../shared/suggestion-row";
 import { normalizeSuggestion } from "./filter";
+import { GENERATION_TIMEOUT_MS } from "./generate";
 import { buildTranscript, countUserMessages } from "./transcript";
 
 type TurnEndedEvent = PluginLifecycleEvents["agent.turn_ended"];
 
+/** Generations running at once across all agents; each one is a `claude` process. */
+export const MAX_CONCURRENT_GENERATIONS = 2;
+/** A run takes about three seconds; one started with less budget left would only be killed. */
+const MIN_RUN_MS = 5_000;
+
 /** Writes this plugin's row for one agent; the same row id replaces the earlier row in place. */
 export type RowWriter = (rowId: string, row: SuggestionRow) => Promise<void>;
 
+export interface GenerationRequest {
+  transcript: string;
+  model: string;
+  /** What is left of the budget after waiting for a slot. */
+  timeoutMs: number;
+  signal: AbortSignal;
+}
+
 export interface SuggestionCoordinatorDeps {
-  generate(transcript: string, signal: AbortSignal): Promise<string | null>;
+  /** Current settings, or null while they load or when they are invalid: then nothing is suggested. */
+  settings(): SuggestionSettings | null;
+  generate(request: GenerationRequest): Promise<string | null>;
   createRowId(): string;
   log(message: string): void;
   logError(message: string, error: unknown): void;
@@ -29,8 +46,54 @@ export interface SuggestionCoordinator {
   dispose(): void;
 }
 
+type Release = () => void;
+
+/** Hands out a fixed number of slots; waiters get them in order and give up on abort or timeout. */
+function createSlots(limit: number) {
+  let free = limit;
+  const waiters: Array<(granted: boolean) => void> = [];
+
+  function grant(): Release {
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      // A freed slot goes straight to the next waiter.
+      const next = waiters.shift();
+      if (next) next(true);
+      else free += 1;
+    };
+  }
+
+  return {
+    acquire(signal: AbortSignal, waitMs: number): Promise<Release | null> {
+      if (signal.aborted) return Promise.resolve(null);
+      if (free > 0) {
+        free -= 1;
+        return Promise.resolve(grant());
+      }
+      return new Promise((resolve) => {
+        function settle(granted: boolean): void {
+          clearTimeout(timer);
+          signal.removeEventListener("abort", giveUp);
+          const index = waiters.indexOf(settle);
+          if (index !== -1) waiters.splice(index, 1);
+          resolve(granted ? grant() : null);
+        }
+        function giveUp(): void {
+          settle(false);
+        }
+        const timer = setTimeout(giveUp, waitMs);
+        signal.addEventListener("abort", giveUp, { once: true });
+        waiters.push(settle);
+      });
+    },
+  };
+}
+
 export function createSuggestionCoordinator(deps: SuggestionCoordinatorDeps): SuggestionCoordinator {
   const agents = new Map<string, AgentState>();
+  const slots = createSlots(MAX_CONCURRENT_GENERATIONS);
 
   function stateOf(agentId: string): AgentState {
     let state = agents.get(agentId);
@@ -67,17 +130,49 @@ export function createSuggestionCoordinator(deps: SuggestionCoordinatorDeps): Su
       // Like Claude Code, the first exchange gets no suggestion.
       const hasHistory = countUserMessages(event.timeline) >= 2;
       if (!isTopLevel || !isCompleted || !hasHistory) return;
+      const settings = deps.settings();
+      if (!settings || !suggestsFor(settings, event.agent.provider)) return;
 
       const transcript = buildTranscript(event.timeline);
       if (transcript.length === 0) return;
+      // Cancelled while the dismissal was written: a listener added now would never hear the abort.
+      if (hookSignal.aborted) return;
 
       const controller = new AbortController();
       const abortWithHook = () => controller.abort();
       hookSignal.addEventListener("abort", abortWithHook, { once: true });
       state.controller = controller;
+      const startedAt = Date.now();
       let raw: string | null;
       try {
-        raw = await deps.generate(transcript, controller.signal);
+        // Waiting spends the same budget as the run, so the hook still ends in time.
+        const release = await slots.acquire(controller.signal, GENERATION_TIMEOUT_MS - MIN_RUN_MS);
+        if (!release || controller.signal.aborted) {
+          release?.();
+          if (state.controller === controller) state.controller = null;
+          if (!controller.signal.aborted) {
+            deps.log(`No suggestion for agent ${event.agent.id}: no free slot in time`);
+          }
+          return;
+        }
+        // Read again: a save while this waited applies to it, so an excluded provider stays excluded.
+        const latest = deps.settings();
+        if (!latest || !suggestsFor(latest, event.agent.provider)) {
+          release();
+          if (state.controller === controller) state.controller = null;
+          deps.log(`No suggestion for agent ${event.agent.id}: settings changed while it waited`);
+          return;
+        }
+        try {
+          raw = await deps.generate({
+            transcript,
+            model: latest.model,
+            timeoutMs: GENERATION_TIMEOUT_MS - (Date.now() - startedAt),
+            signal: controller.signal,
+          });
+        } finally {
+          release();
+        }
       } catch (error) {
         if (state.controller === controller) state.controller = null;
         deps.logError(`Suggestion generation failed for agent ${event.agent.id}`, error);

@@ -9,7 +9,7 @@ import {
 } from "../server/generate";
 
 describe("buildClaudeArgs", () => {
-  test("runs the requested model headless, without tools, MCP servers, hooks or a session", () => {
+  test("runs the requested model headless, without tools, MCP servers, hooks, CLAUDE.md or a session", () => {
     const args = buildClaudeArgs("haiku");
     expect(args.slice(0, 3)).toEqual(["-p", "--model", "haiku"]);
     expect(args).toContain("--strict-mcp-config");
@@ -17,7 +17,12 @@ describe("buildClaudeArgs", () => {
     expect(args).toContain("--no-session-persistence");
     expect(args[args.indexOf("--tools") + 1]).toBe("");
     expect(args[args.indexOf("--disallowedTools") + 1]).toBe("*");
-    expect(JSON.parse(args[args.indexOf("--settings") + 1]!)).toEqual({ disableAllHooks: true });
+    // Settings must load: they can hold the sign-in, gateway or proxy the CLI needs.
+    expect(args).not.toContain("--setting-sources");
+    expect(JSON.parse(args[args.indexOf("--settings") + 1]!)).toEqual({
+      disableAllHooks: true,
+      env: { CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1" },
+    });
     expect(args[args.indexOf("--output-format") + 1]).toBe("json");
   });
 });
@@ -69,6 +74,18 @@ describe("generateSuggestion", () => {
     expect(runs[0]?.stdin).toContain("User: fix it\nAssistant: Fixed. Run the tests?");
     expect(runs[0]?.cwd).toContain("paseo-prompt-suggestions-");
     expect(runs[0]?.timeoutMs).toBeLessThan(30_000);
+  });
+
+  test("gives the run only what is left of the budget", async () => {
+    const { runner, runs } = fakeRunner('{"subtype":"success","result":"run the tests"}');
+    await generateSuggestion({
+      transcript: "User: hi",
+      model: "haiku",
+      signal: new AbortController().signal,
+      timeoutMs: 12_000,
+      runner,
+    });
+    expect(runs[0]?.timeoutMs).toBe(12_000);
   });
 
   test("throws the CLI's reason when it exits with an error", async () => {

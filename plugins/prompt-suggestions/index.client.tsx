@@ -1,5 +1,6 @@
 import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { watchAgentActivity } from "./client/agent-activity";
+import { SuggestionSettingsScreen } from "./client/settings-screen";
 import { createSuggestionRow } from "./client/suggestion-row";
 import { createSuggestionStore } from "./client/suggestion-store";
 import { startComposerBridge } from "./client/web";
@@ -16,6 +17,13 @@ export default function contribute(client: PluginClientContext) {
     version: SUGGESTION_ROW_VERSION,
     schema: suggestionRowSchema,
     Component: createSuggestionRow(store),
+  });
+  client.addSettingsScreen({
+    id: "suggestions",
+    // The menu item sits in this plugin's own menu, so it names the action, not the plugin.
+    title: "Settings",
+    icon: "Sparkles",
+    Component: SuggestionSettingsScreen,
   });
   const stopBridge = startComposerBridge(store);
   const stopWatching = watchAgentActivity(client, store);
