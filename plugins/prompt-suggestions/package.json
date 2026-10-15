@@ -1,6 +1,5 @@
 {
   "name": "paseo-prompt-suggestions",
-  "private": true,
   "version": "0.2.0",
   "files": [
     "paseo-plugin.json",
