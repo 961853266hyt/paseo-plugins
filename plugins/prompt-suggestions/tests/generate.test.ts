@@ -9,7 +9,7 @@ import {
 } from "../server/generate";
 
 describe("buildClaudeArgs", () => {
-  test("runs the requested model headless, without tools, MCP servers, hooks, settings or a session", () => {
+  test("runs the requested model headless, without tools, MCP servers, hooks, CLAUDE.md or a session", () => {
     const args = buildClaudeArgs("haiku");
     expect(args.slice(0, 3)).toEqual(["-p", "--model", "haiku"]);
     expect(args).toContain("--strict-mcp-config");
@@ -17,8 +17,12 @@ describe("buildClaudeArgs", () => {
     expect(args).toContain("--no-session-persistence");
     expect(args[args.indexOf("--tools") + 1]).toBe("");
     expect(args[args.indexOf("--disallowedTools") + 1]).toBe("*");
-    expect(args[args.indexOf("--setting-sources") + 1]).toBe("");
-    expect(JSON.parse(args[args.indexOf("--settings") + 1]!)).toEqual({ disableAllHooks: true });
+    // Settings must load: they can hold the sign-in, gateway or proxy the CLI needs.
+    expect(args).not.toContain("--setting-sources");
+    expect(JSON.parse(args[args.indexOf("--settings") + 1]!)).toEqual({
+      disableAllHooks: true,
+      env: { CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1" },
+    });
     expect(args[args.indexOf("--output-format") + 1]).toBe("json");
   });
 });

@@ -6,8 +6,9 @@
   every agent or only Claude agents get suggestions, and which model predictions run on: the latest
   Haiku, Sonnet or Opus, or a specific Claude model. The defaults, every agent and the latest Haiku,
   keep the earlier behaviour. Changes apply without reloading the plugin.
-- Predictions no longer load your Claude Code user, project or local settings, so your personal
-  `~/.claude/CLAUDE.md` stays out of them and they use fewer input tokens.
+- Predictions no longer load your CLAUDE.md, rules or memory files, so your personal
+  `~/.claude/CLAUDE.md` stays out of them and they use fewer input tokens. Your Claude Code
+  settings still apply, including the sign-in, gateway or proxy set up there.
 - At most two predictions run at once across all agents; the rest wait their turn within the
   same time limit and are dropped when the agent's next turn starts first.
 
