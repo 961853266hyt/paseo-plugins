@@ -4,10 +4,19 @@ import type {
   PluginSettingsState,
 } from "@getpaseo/plugin/server";
 import { randomUUID } from "node:crypto";
+import { setFlagsFromString } from "node:v8";
 import { generateSuggestion } from "./server/generate";
 import { createSuggestionCoordinator, type RowWriter } from "./server/suggestions";
 import { type SuggestionSettings, suggestionSettings } from "./shared/settings";
 import { SUGGESTION_ROW_KIND, SUGGESTION_ROW_VERSION } from "./shared/suggestion-row";
+
+// This process checks every daemon message with one generated validator of about 11 MB
+// (`safeParse_WSOutboundMessageSchema` in @getpaseo/protocol). Where Maglev is on, as on Node 24,
+// Maglev compiles it again and again on a worker thread, and glibc keeps the native memory: a
+// 3-minute load reached 2.2 GB, against 277 MB without Maglev. Turbofan already skips a function
+// this large. The bundle runs before the daemon client connects, so this precedes the first
+// message.
+setFlagsFromString("--no-maglev");
 
 function log(message: string): void {
   console.log(`[prompt-suggestions] ${message}`);

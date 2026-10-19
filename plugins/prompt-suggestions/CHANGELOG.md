@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1
+
+- The plugin process no longer climbs past 1 GB of memory on Node 24. It turns off V8's Maglev
+  compiler, which kept recompiling Paseo's 11 MB message validator; a 3-minute load now peaks at
+  277 MB instead of 2.2 GB. Node 22, where Maglev is already off, is unaffected.
+
 ## 0.2.0
 
 - Added settings, opened from the ⋯ menu of Prompt suggestions under Settings → Plugins: whether
