@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.2
+
+- Added a README, so the npm package page describes the plugin and how to install it.
+
 ## 0.2.1
 
 - The plugin process no longer climbs past 1 GB of memory on Node 24. It turns off V8's Maglev
