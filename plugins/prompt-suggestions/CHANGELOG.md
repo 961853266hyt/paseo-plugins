@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.3
+
+- Copy on the suggestion card now confirms with a brief check mark on the button instead of a
+  toast. Screen readers on iOS and Android announce the copy.
+
 ## 0.2.2
 
 - Added a README, so the npm package page describes the plugin and how to install it.

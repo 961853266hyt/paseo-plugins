@@ -1,13 +1,23 @@
 import { type PluginTimelineItemProps, usePaseo } from "@getpaseo/plugin/client";
 import { copyText, Icon, useToast } from "@getpaseo/plugin/client/react-native";
 import { useMutation } from "@tanstack/react-query";
-import { type ComponentType, useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
-import { Pressable, Text, View } from "react-native";
+import {
+  type ComponentType,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import { AccessibilityInfo, Pressable, Text, View } from "react-native";
 import type { SuggestionRow } from "../shared/suggestion-row";
 import { needsCard, type SuggestionStore } from "./suggestion-store";
 import { isComposerBridgeSupported } from "./web";
 
 type PluginTheme = PluginTimelineItemProps["theme"];
+
+/** How long the Copy button shows its check mark after a copy. */
+const COPIED_MS = 1500;
 
 /**
  * The row carries the suggestion to this client. Where Tab can accept the composer placeholder
@@ -67,11 +77,22 @@ function SuggestionCard({ agentId, text, theme, onDone }: SuggestionCardProps) {
     onSuccess: onDone,
     onError: (error) => toast.error(`Could not send the suggestion: ${messageOf(error)}`),
   });
+  // A fresh timestamp per copy restarts the timer when Copy is pressed again while the check shows.
+  const [copiedAt, setCopiedAt] = useState<number | null>(null);
   const copy = useMutation({
     mutationFn: () => copyText(text),
-    onSuccess: () => toast.show("Suggestion copied", { variant: "success" }),
+    onSuccess: () => {
+      setCopiedAt(Date.now());
+      AccessibilityInfo.announceForAccessibility("Suggestion copied");
+    },
     onError: (error) => toast.error(`Could not copy the suggestion: ${messageOf(error)}`),
   });
+  useEffect(() => {
+    if (copiedAt === null) return;
+    const timer = setTimeout(() => setCopiedAt(null), COPIED_MS);
+    return () => clearTimeout(timer);
+  }, [copiedAt]);
+  const copied = copiedAt !== null;
   const styles = useMemo(() => buildStyles(theme), [theme]);
   const isBusy = send.isPending || copy.isPending;
 
@@ -92,12 +113,18 @@ function SuggestionCard({ agentId, text, theme, onDone }: SuggestionCardProps) {
       </Pressable>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Copy suggested message"
+        accessibilityLabel={copied ? "Suggested message copied" : "Copy suggested message"}
         disabled={isBusy}
         onPress={() => copy.mutate()}
-        style={styles.secondary}
+        style={copied ? styles.copied : styles.secondary}
       >
-        <Text style={styles.secondaryLabel}>Copy</Text>
+        {/* The label stays laid out under the check so the button keeps its size. */}
+        <Text style={copied ? styles.hiddenLabel : styles.secondaryLabel}>Copy</Text>
+        {copied ? (
+          <View style={styles.copiedIcon}>
+            <Icon name="Check" size={14} color={theme.colors.statusSuccess} />
+          </View>
+        ) : null}
       </Pressable>
     </View>
   );
@@ -108,6 +135,13 @@ function messageOf(error: unknown): string {
 }
 
 function buildStyles(theme: PluginTheme) {
+  const secondary = {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  };
   return {
     card: {
       flexDirection: "row" as const,
@@ -128,13 +162,18 @@ function buildStyles(theme: PluginTheme) {
       backgroundColor: theme.colors.accent,
     },
     primaryLabel: { color: theme.colors.accentForeground },
-    secondary: {
-      paddingVertical: 6,
-      paddingHorizontal: 12,
-      borderRadius: 8,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
-    },
+    secondary,
     secondaryLabel: { color: theme.colors.foreground },
+    hiddenLabel: { color: theme.colors.foreground, opacity: 0 },
+    copied: { ...secondary, borderColor: theme.colors.statusSuccess },
+    copiedIcon: {
+      position: "absolute" as const,
+      top: 0,
+      right: 0,
+      bottom: 0,
+      left: 0,
+      alignItems: "center" as const,
+      justifyContent: "center" as const,
+    },
   };
 }
