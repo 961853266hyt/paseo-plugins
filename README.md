@@ -6,10 +6,12 @@ with its own manifest, README, overview, changelog and license.
 | Plugin | What it does |
 | --- | --- |
 | [Prompt suggestions](plugins/prompt-suggestions) | Predicts your next prompt after each agent turn. Tab accepts it on web and desktop; phones get a tap-to-send card. Needs the Claude Code CLI on the daemon host. |
+| [Better btw](plugins/better-btw) | Claude Code's `/btw`: ask about an agent's conversation without interrupting it; the answer never enters its history. Needs the Claude Code CLI on the daemon host. |
 
 ## Install
 
-From the [plugin registry](https://paseo.sh/plugins), which installs the reviewed version:
+Prompt suggestions is listed in the [plugin registry](https://paseo.sh/plugins), which installs
+the reviewed version:
 
 ```bash
 paseo plugin add 961853266hyt/prompt-suggestions
@@ -19,16 +21,19 @@ From npm, which has each release as soon as it is published:
 
 ```bash
 paseo plugin install npm:paseo-prompt-suggestions
+paseo plugin install npm:paseo-better-btw
 ```
 
 Straight from this repository:
 
 ```bash
 paseo plugin install git:961853266hyt/paseo-plugins:plugins/prompt-suggestions
+paseo plugin install git:961853266hyt/paseo-plugins:plugins/better-btw
 ```
 
-Update any of them with `paseo plugin update prompt-suggestions`. A registry install moves to a
-new version only after the registry approves it, so it can trail npm for a while.
+Update any of them with `paseo plugin update <id>`, such as `paseo plugin update better-btw`.
+A registry install moves to a new version only after the registry approves it, so it can trail npm
+for a while.
 
 Plugins are trusted code: server code runs on the daemon host and client code runs inside the
 Paseo app. Read a plugin's `OVERVIEW.md` for what it reads, sends and needs.
