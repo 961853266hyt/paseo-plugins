@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1
+
+- Added screenshots of the desktop panel and the phone sheet to the plugin listing and the npm
+  page.
+
 ## 0.1.0
 
 First release.

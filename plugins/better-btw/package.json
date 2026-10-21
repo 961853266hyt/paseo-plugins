@@ -1,12 +1,13 @@
 {
   "name": "paseo-better-btw",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "files": [
     "paseo-plugin.json",
     "OVERVIEW.md",
     "CHANGELOG.md",
     "index.client.tsx",
     "index.server.ts",
+    "assets/",
     "client/",
     "server/",
     "shared/",

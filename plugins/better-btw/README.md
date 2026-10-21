@@ -13,6 +13,10 @@ As in Claude Code:
 - Each answer is a single reply. A later side question also sees the earlier ones: the 20 newest answers are replayed with each new question.
 - The thread stays out of the agent's history. Copy takes an answer as Markdown, Clear earlier forgets all but the current side question, and Stop ends an answer that is still arriving. Answers render as Markdown.
 
+![The side thread in the Explorer sidebar beside the chat on desktop](https://raw.githubusercontent.com/961853266hyt/paseo-plugins/main/plugins/better-btw/assets/desktop-panel.png)
+
+![The side thread in a bottom sheet on a phone](https://raw.githubusercontent.com/961853266hyt/paseo-plugins/main/plugins/better-btw/assets/phone-sheet.png)
+
 ## Install
 
 From npm:

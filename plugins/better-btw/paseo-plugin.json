@@ -2,6 +2,10 @@
   "id": "better-btw",
   "name": "Better btw",
   "description": "Claude Code's /btw: ask about an agent's conversation without interrupting it; answers never enter its history.",
+  "media": [
+    "assets/desktop-panel.png",
+    "assets/phone-sheet.png"
+  ],
   "requirements": {
     "paseo": ">=0.11.2"
   }
