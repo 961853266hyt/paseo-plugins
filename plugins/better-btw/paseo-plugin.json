@@ -1,0 +1,8 @@
+{
+  "id": "better-btw",
+  "name": "Better btw",
+  "description": "Claude Code's /btw: ask about an agent's conversation without interrupting it; answers never enter its history.",
+  "requirements": {
+    "paseo": ">=0.11.2"
+  }
+}
