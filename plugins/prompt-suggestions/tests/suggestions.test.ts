@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import type { PluginLifecycleEvents } from "@getpaseo/plugin/server";
 import { GENERATION_TIMEOUT_MS } from "../server/generate";
 import type { SuggestionSettings } from "../shared/settings";
 import type { SuggestionRow } from "../shared/suggestion-row";
@@ -8,9 +7,9 @@ import {
   type GenerationRequest,
   MAX_CONCURRENT_GENERATIONS,
   type RowWriter,
+  type TurnEndedEvent,
 } from "../server/suggestions";
-
-type TurnEndedEvent = PluginLifecycleEvents["agent.turn_ended"];
+import type { TimelineItem } from "../server/transcript";
 
 interface Write {
   rowId: string;
@@ -27,7 +26,18 @@ function recorder(): { write: RowWriter; writes: Write[] } {
   };
 }
 
-function turnEnded(overrides: Partial<TurnEndedEvent> = {}): TurnEndedEvent {
+const conversation: TimelineItem[] = [
+  { type: "user_message", text: "fix the bug" },
+  { type: "assistant_message", text: "Fixed." },
+  { type: "user_message", text: "and the other one" },
+  { type: "assistant_message", text: "Done. Want me to run the tests?" },
+];
+
+function turnEnded(
+  overrides: Partial<TurnEndedEvent> = {},
+  items: readonly TimelineItem[] = conversation,
+  hasOlder = false,
+): TurnEndedEvent {
   return {
     agent: {
       id: "agent-1",
@@ -39,12 +49,7 @@ function turnEnded(overrides: Partial<TurnEndedEvent> = {}): TurnEndedEvent {
     },
     turnId: "turn-2",
     outcome: { kind: "completed" },
-    timeline: [
-      { type: "user_message", text: "fix the bug" },
-      { type: "assistant_message", text: "Fixed." },
-      { type: "user_message", text: "and the other one" },
-      { type: "assistant_message", text: "Done. Want me to run the tests?" },
-    ],
+    readTimeline: async () => ({ items, hasOlder }),
     ...overrides,
   };
 }
@@ -120,7 +125,7 @@ describe("suggestion coordinator", () => {
   });
 
   test.each([
-    ["the first exchange", turnEnded({ timeline: turnEnded().timeline.slice(0, 2) })],
+    ["the first exchange", turnEnded({}, conversation.slice(0, 2))],
     ["a failed turn", turnEnded({ outcome: { kind: "failed", error: { message: "boom" } } })],
     ["a canceled turn", turnEnded({ outcome: { kind: "canceled", reason: "user" } })],
     [
@@ -133,6 +138,27 @@ describe("suggestion coordinator", () => {
     await coordinator.turnEnded(event, write, live());
     expect(writes).toEqual([]);
     expect(signals).toHaveLength(0);
+  });
+
+  test("suggests when earlier history lies beyond the page that was read", async () => {
+    const { coordinator } = coordinatorReplying("run the tests");
+    const { write, writes } = recorder();
+    await coordinator.turnEnded(turnEnded({}, conversation.slice(2), true), write, live());
+    expect(writes).toEqual([{ rowId: "row-1", row: { status: "ready", text: "run the tests" } }]);
+  });
+
+  test("logs and skips the turn when the conversation cannot be read", async () => {
+    const { coordinator, signals, logs } = coordinatorReplying("run the tests");
+    const { write, writes } = recorder();
+    const unreadable = turnEnded({
+      readTimeline: async () => {
+        throw new Error("agent not found");
+      },
+    });
+    await coordinator.turnEnded(unreadable, write, live());
+    expect(writes).toEqual([]);
+    expect(signals).toHaveLength(0);
+    expect(logs).toEqual(["Could not read the conversation of agent agent-1: Error: agent not found"]);
   });
 
   test("passes the transcript and the configured model to the generator", async () => {

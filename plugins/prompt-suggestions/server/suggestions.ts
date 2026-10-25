@@ -3,9 +3,25 @@ import { type SuggestionSettings, suggestsFor } from "../shared/settings";
 import type { SuggestionRow } from "../shared/suggestion-row";
 import { normalizeSuggestion } from "./filter";
 import { GENERATION_TIMEOUT_MS } from "./generate";
-import { buildTranscript, countUserMessages } from "./transcript";
+import { buildTranscript, countUserMessages, type TimelineItem } from "./transcript";
 
-type TurnEndedEvent = PluginLifecycleEvents["agent.turn_ended"];
+/** The newest part of an agent's conversation, oldest item first. */
+export interface RecentTimeline {
+  items: readonly TimelineItem[];
+  /** Earlier items exist that were not read. */
+  hasOlder: boolean;
+}
+
+/**
+ * A completed turn, with its conversation read on demand. The hook's own `timeline` field is
+ * always empty since Paseo 0.13, so history comes from the daemon's timeline instead.
+ */
+export type TurnEndedEvent = Pick<
+  PluginLifecycleEvents["agent.turn_ended"],
+  "agent" | "turnId" | "outcome"
+> & {
+  readTimeline(): Promise<RecentTimeline>;
+};
 
 /** Generations running at once across all agents; each one is a `claude` process. */
 export const MAX_CONCURRENT_GENERATIONS = 2;
@@ -127,13 +143,21 @@ export function createSuggestionCoordinator(deps: SuggestionCoordinatorDeps): Su
 
       const isTopLevel = event.agent.parentAgentId === null;
       const isCompleted = event.outcome.kind === "completed";
-      // Like Claude Code, the first exchange gets no suggestion.
-      const hasHistory = countUserMessages(event.timeline) >= 2;
-      if (!isTopLevel || !isCompleted || !hasHistory) return;
+      if (!isTopLevel || !isCompleted) return;
       const settings = deps.settings();
       if (!settings || !suggestsFor(settings, event.agent.provider)) return;
 
-      const transcript = buildTranscript(event.timeline);
+      let timeline: RecentTimeline;
+      try {
+        timeline = await event.readTimeline();
+      } catch (error) {
+        deps.logError(`Could not read the conversation of agent ${event.agent.id}`, error);
+        return;
+      }
+      // Like Claude Code, the first exchange gets no suggestion.
+      const hasHistory = timeline.hasOlder || countUserMessages(timeline.items) >= 2;
+      if (!hasHistory) return;
+      const transcript = buildTranscript(timeline.items);
       if (transcript.length === 0) return;
       // Cancelled while the dismissal was written: a listener added now would never hear the abort.
       if (hookSignal.aborted) return;

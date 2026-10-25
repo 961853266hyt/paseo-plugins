@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.4
+
+- Suggestions work again on Paseo 0.13. Since that release the turn-ended event no longer carries
+  the conversation, so the plugin saw every turn as the first one and stayed silent. It now reads
+  the agent's recent messages from Paseo after each turn, which works on every supported version.
+
 ## 0.2.3
 
 - Copy on the suggestion card now confirms with a brief check mark on the button instead of a

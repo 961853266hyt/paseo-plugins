@@ -6,7 +6,11 @@ import type {
 import { randomUUID } from "node:crypto";
 import { setFlagsFromString } from "node:v8";
 import { generateSuggestion } from "./server/generate";
-import { createSuggestionCoordinator, type RowWriter } from "./server/suggestions";
+import {
+  createSuggestionCoordinator,
+  type RecentTimeline,
+  type RowWriter,
+} from "./server/suggestions";
 import { type SuggestionSettings, suggestionSettings } from "./shared/settings";
 import { SUGGESTION_ROW_KIND, SUGGESTION_ROW_VERSION } from "./shared/suggestion-row";
 
@@ -37,6 +41,19 @@ function rowWriter(agentId: string, { paseo }: PluginHookContext): RowWriter {
       data: row,
     });
   };
+}
+
+/** Timeline entries read after a turn: enough for the transcript's 6,000 characters. */
+const RECENT_ENTRIES = 60;
+
+async function readRecentTimeline(
+  agentId: string,
+  { paseo }: PluginHookContext,
+): Promise<RecentTimeline> {
+  const page = await paseo.agents
+    .ref(agentId)
+    .timeline.refetch({ direction: "tail", limit: RECENT_ENTRIES });
+  return { items: page.entries.map((entry) => entry.item), hasOlder: page.hasOlder };
 }
 
 export default function contribute(server: PluginServerContext) {
@@ -74,8 +91,12 @@ export default function contribute(server: PluginServerContext) {
   });
 
   const removers = [
-    server.on("agent.turn_ended", (event, context) =>
-      coordinator.turnEnded(event, rowWriter(event.agent.id, context), context.signal),
+    server.on("agent.turn_ended", ({ agent, turnId, outcome }, context) =>
+      coordinator.turnEnded(
+        { agent, turnId, outcome, readTimeline: () => readRecentTimeline(agent.id, context) },
+        rowWriter(agent.id, context),
+        context.signal,
+      ),
     ),
     server.on("agent.turn_started", (event, context) =>
       coordinator.invalidate(event.agent.id, rowWriter(event.agent.id, context)),
