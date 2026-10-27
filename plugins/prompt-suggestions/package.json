@@ -1,6 +1,6 @@
 {
   "name": "paseo-prompt-suggestions",
-  "version": "0.2.4",
+  "version": "0.3.0",
   "files": [
     "paseo-plugin.json",
     "OVERVIEW.md",

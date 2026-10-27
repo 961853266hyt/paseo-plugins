@@ -8,6 +8,8 @@ Suggestions start from the second exchange of a conversation and only follow tur
 
 Requires Paseo 0.11.2 or later and the Claude Code CLI (`claude`) installed and signed in on the daemon host. Every prediction runs on Claude Haiku through that CLI by default, whichever agent you are talking to.
 
+On Paseo 0.13 or later the plugin shows its text in the app's language, English or Simplified Chinese; earlier versions show English.
+
 ## Settings
 
 In Settings → Plugins, open the ⋯ menu of Prompt suggestions and choose Settings. The settings are shared by every client of the host:

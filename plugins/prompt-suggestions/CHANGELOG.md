@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0
+
+- On Paseo 0.13 and later the plugin follows the app's language, in English or Simplified
+  Chinese: the suggestion card, the settings, and the plugin's name, description and listing
+  page. Earlier Paseo versions show English as before.
+
 ## 0.2.4
 
 - Suggestions work again on Paseo 0.13. Since that release the turn-ended event no longer carries
