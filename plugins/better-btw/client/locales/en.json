@@ -1,0 +1,56 @@
+{
+  "panelTitle": "Side questions",
+  "commandDescription": "Ask a quick side question without interrupting the agent",
+  "commandArgument": "[question]",
+  "commandCenterTitle": "Side questions (/btw)",
+  "settingsScreen": "Settings",
+  "usage": "Usage: /btw <your question>",
+  "pill": {
+    "title": "Side question",
+    "answering": "Answering…",
+    "answered": "Side answer",
+    "failed": "No answer",
+    "stopped": "Stopped",
+    "idle": "Side questions"
+  },
+  "thread": {
+    "loadFailed": "Could not load side questions: {{error}}",
+    "emptyTitle": "No side questions yet",
+    "emptyBody": "Type /btw and a question in the agent's message box to ask about this conversation. The agent keeps working, and nothing is added to its history.",
+    "earlier": "+{{number}} earlier",
+    "showQuestion": "Show side question: {{question}}",
+    "answeringSuffix": " (answering…)",
+    "latest": "Latest",
+    "clearEarlier": "Clear earlier",
+    "clearFailed": "Could not clear side questions: {{error}}",
+    "dismiss": "Dismiss side question",
+    "answering": "Answering…",
+    "noAnswer": "No answer.",
+    "stopped": "Stopped.",
+    "stop": "Stop",
+    "stopFailed": "Could not stop the side question: {{error}}",
+    "copy": "Copy",
+    "copied": "Copied",
+    "copiedAnnouncement": "Answer copied",
+    "copyFailed": "Could not copy the answer: {{error}}"
+  },
+  "ask": {
+    "placeholder": "Ask a side question…",
+    "inputLabel": "Side question",
+    "send": "Ask side question"
+  },
+  "settings": {
+    "section": "Better btw",
+    "loading": "Loading settings…",
+    "tryAgain": "Try again",
+    "reload": "Reload",
+    "restoreDefaults": "Restore default settings",
+    "reset": "Reset",
+    "model": "Model",
+    "modelHint": "Same as the agent answers with a Claude agent's own model, as Claude Code does, and with Latest Sonnet for other agents. Every side question sends the agent's conversation to Anthropic through Claude Code.",
+    "sameAsAgent": "Same as the agent",
+    "latestHaiku": "Latest Haiku",
+    "latestSonnet": "Latest Sonnet",
+    "latestOpus": "Latest Opus"
+  }
+}

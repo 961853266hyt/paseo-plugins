@@ -1,0 +1,31 @@
+{
+  "settingsScreen": "设置",
+  "card": {
+    "send": "发送",
+    "sending": "发送中…",
+    "copy": "复制",
+    "sendLabel": "发送建议的消息：{{text}}",
+    "copyLabel": "复制建议的消息",
+    "copiedLabel": "已复制建议的消息",
+    "copiedAnnouncement": "已复制建议",
+    "sendFailed": "无法发送建议：{{error}}",
+    "copyFailed": "无法复制建议：{{error}}"
+  },
+  "settings": {
+    "section": "提示词建议",
+    "loading": "正在加载设置…",
+    "tryAgain": "重试",
+    "reload": "重新加载",
+    "restoreDefaults": "恢复默认设置",
+    "reset": "重置",
+    "suggestFor": "为哪些 Agent 生成建议",
+    "suggestForHint": "每次预测都会把最近的对话发送给 Anthropic。选择仅 Claude Agent，可以避免把和其他 Agent 的对话发出去。",
+    "allAgents": "所有 Agent",
+    "claudeOnly": "仅 Claude Agent",
+    "model": "模型",
+    "modelHint": "“最新”会跟随各系列的最新模型。Haiku 最快；更大的模型预测更慢，也会消耗更多 Claude 用量。",
+    "latestHaiku": "最新 Haiku",
+    "latestSonnet": "最新 Sonnet",
+    "latestOpus": "最新 Opus"
+  }
+}

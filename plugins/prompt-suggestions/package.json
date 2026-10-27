@@ -4,6 +4,7 @@
   "files": [
     "paseo-plugin.json",
     "OVERVIEW.md",
+    "OVERVIEW.*.md",
     "CHANGELOG.md",
     "index.client.tsx",
     "index.server.ts",
@@ -18,7 +19,7 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "@getpaseo/plugin": "0.11.2",
+    "@getpaseo/plugin": "0.13.0",
     "@tanstack/react-query": "^5.90.11",
     "@types/node": "^22.12.0",
     "@types/react": "~19.2.0",

@@ -1,0 +1,56 @@
+{
+  "panelTitle": "顺便问",
+  "commandDescription": "顺便问一个问题，不打断 Agent",
+  "commandArgument": "[问题]",
+  "commandCenterTitle": "顺便问 (/btw)",
+  "settingsScreen": "设置",
+  "usage": "用法：/btw <你的问题>",
+  "pill": {
+    "title": "顺便问",
+    "answering": "回答中…",
+    "answered": "已回答",
+    "failed": "无回答",
+    "stopped": "已停止",
+    "idle": "顺便问"
+  },
+  "thread": {
+    "loadFailed": "无法加载问题：{{error}}",
+    "emptyTitle": "还没有顺便问的问题",
+    "emptyBody": "在 Agent 的输入框里输入 /btw 加问题，就能询问这段对话。Agent 会继续工作，也不会往它的历史里添加任何内容。",
+    "earlier": "+{{number}} 个更早的问题",
+    "showQuestion": "查看问题：{{question}}",
+    "answeringSuffix": "（回答中…）",
+    "latest": "最新",
+    "clearEarlier": "清除之前的",
+    "clearFailed": "无法清除问题：{{error}}",
+    "dismiss": "关闭这个问题",
+    "answering": "回答中…",
+    "noAnswer": "没有回答。",
+    "stopped": "已停止。",
+    "stop": "停止",
+    "stopFailed": "无法停止回答：{{error}}",
+    "copy": "复制",
+    "copied": "已复制",
+    "copiedAnnouncement": "已复制回答",
+    "copyFailed": "无法复制回答：{{error}}"
+  },
+  "ask": {
+    "placeholder": "顺便问一句…",
+    "inputLabel": "顺便问的问题",
+    "send": "提问"
+  },
+  "settings": {
+    "section": "Better btw",
+    "loading": "正在加载设置…",
+    "tryAgain": "重试",
+    "reload": "重新加载",
+    "restoreDefaults": "恢复默认设置",
+    "reset": "重置",
+    "model": "模型",
+    "modelHint": "“与 Agent 相同”对 Claude Agent 使用它自己的模型，和 Claude Code 一样；对其他 Agent 使用最新 Sonnet。每个问题都会通过 Claude Code 把 Agent 的对话发送给 Anthropic。",
+    "sameAsAgent": "与 Agent 相同",
+    "latestHaiku": "最新 Haiku",
+    "latestSonnet": "最新 Sonnet",
+    "latestOpus": "最新 Opus"
+  }
+}

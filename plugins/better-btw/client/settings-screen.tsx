@@ -13,6 +13,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Text } from "react-native";
 import { SAME_AS_AGENT, sideQuestionSettings } from "../shared/settings";
+import { type TextKey, useText } from "./i18n";
 
 type ReadySettings = Extract<SettingsState<typeof sideQuestionSettings.schema>, { status: "ready" }>;
 
@@ -21,12 +22,17 @@ interface Option {
   value: string;
 }
 
+interface TextOption {
+  label: TextKey;
+  value: string;
+}
+
 // Claude Code aliases, so each follows the newest model of its family.
-const fixedModels: Option[] = [
-  { label: "Same as the agent", value: SAME_AS_AGENT },
-  { label: "Latest Haiku", value: "haiku" },
-  { label: "Latest Sonnet", value: "sonnet" },
-  { label: "Latest Opus", value: "opus" },
+const fixedModels: TextOption[] = [
+  { label: "settings.sameAsAgent", value: SAME_AS_AGENT },
+  { label: "settings.latestHaiku", value: "haiku" },
+  { label: "settings.latestSonnet", value: "sonnet" },
+  { label: "settings.latestOpus", value: "opus" },
 ];
 
 /**
@@ -35,6 +41,7 @@ const fixedModels: Option[] = [
  */
 function useModelOptions(): Option[] {
   const paseo = usePaseo();
+  const t = useText();
   const [models, setModels] = useState<Option[]>([]);
   useEffect(() => {
     let active = true;
@@ -53,22 +60,30 @@ function useModelOptions(): Option[] {
       active = false;
     };
   }, [paseo]);
-  return useMemo(() => [...fixedModels, ...models], [models]);
+  return useMemo(
+    () => [...fixedModels.map((option) => ({ ...option, label: t(option.label) })), ...models],
+    [models, t],
+  );
 }
 
 export function SideQuestionSettingsScreen({ theme }: PluginSurfaceProps) {
   const settings = useSettings(sideQuestionSettings);
+  const t = useText();
   const style = useMemo(() => ({ color: theme.colors.foreground }), [theme]);
-  if (settings.status === "loading") return <Text style={style}>Loading settings…</Text>;
+  if (settings.status === "loading") return <Text style={style}>{t("settings.loading")}</Text>;
   if (settings.status !== "ready") {
     return (
-      <SettingsSection title="Better btw">
+      <SettingsSection title={t("settings.section")}>
         <Text style={style}>{settings.error}</Text>
-        <SettingsAction label="Try again" actionLabel="Reload" onPress={settings.reload} />
+        <SettingsAction
+          label={t("settings.tryAgain")}
+          actionLabel={t("settings.reload")}
+          onPress={settings.reload}
+        />
         {settings.status === "invalid" ? (
           <SettingsAction
-            label="Restore default settings"
-            actionLabel="Reset"
+            label={t("settings.restoreDefaults")}
+            actionLabel={t("settings.reset")}
             onPress={settings.reset}
           />
         ) : null}
@@ -79,6 +94,7 @@ export function SideQuestionSettingsScreen({ theme }: PluginSurfaceProps) {
 }
 
 function SettingsForm({ settings, style }: { settings: ReadySettings; style: { color: string } }) {
+  const t = useText();
   const modelOptions = useModelOptions();
   const changeModel = useCallback(
     (model: string) => {
@@ -87,11 +103,11 @@ function SettingsForm({ settings, style }: { settings: ReadySettings; style: { c
     [settings],
   );
   return (
-    <SettingsSection title="Better btw">
+    <SettingsSection title={t("settings.section")}>
       <SettingsCard>
         <SettingsSelect
-          label="Model"
-          hint="Same as the agent answers with a Claude agent's own model, as Claude Code does, and with Latest Sonnet for other agents. Every side question sends the agent's conversation to Anthropic through Claude Code."
+          label={t("settings.model")}
+          hint={t("settings.modelHint")}
           value={settings.values.model}
           options={modelOptions}
           disabled={settings.saving}

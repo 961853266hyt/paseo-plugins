@@ -11,6 +11,7 @@ import {
   stopSideQuestion,
 } from "../shared/thread";
 import { onAsked } from "./asked";
+import { useText } from "./i18n";
 import { MarkdownView } from "./markdown-view";
 
 type PluginTheme = PluginHostProps["theme"];
@@ -40,6 +41,7 @@ export function ThreadView({ agentId, theme, onDismiss }: ThreadViewProps) {
   const clear = useRpc(clearSideQuestions);
   const queryClient = useQueryClient();
   const toast = useToast();
+  const t = useText();
   const [focusId, setFocusId] = useState<string | null>(null);
   const styles = useMemo(() => buildStyles(theme), [theme]);
 
@@ -68,13 +70,17 @@ export function ThreadView({ agentId, theme, onDismiss }: ThreadViewProps) {
       setFocusId(null);
       void queryClient.invalidateQueries({ queryKey: threadQueryKey(agentId) });
     },
-    onError: (error) => toast.error(`Could not clear side questions: ${messageOf(error)}`),
+    onError: (error) => toast.error(t("thread.clearFailed", { error: messageOf(error) })),
   });
 
   const thread = query.data;
   if (!thread) {
     if (query.isError) {
-      return <Text style={styles.muted}>Could not load side questions: {messageOf(query.error)}</Text>;
+      return (
+        <Text style={styles.muted}>
+          {t("thread.loadFailed", { error: messageOf(query.error) })}
+        </Text>
+      );
     }
     return <ActivityIndicator color={theme.colors.foregroundMuted} />;
   }
@@ -82,11 +88,8 @@ export function ThreadView({ agentId, theme, onDismiss }: ThreadViewProps) {
   if (!focus) {
     return (
       <View style={styles.empty}>
-        <Text style={styles.title}>No side questions yet</Text>
-        <Text style={styles.muted}>
-          Type /btw and a question in the agent's message box to ask about this conversation. The
-          agent keeps working, and nothing is added to its history.
-        </Text>
+        <Text style={styles.title}>{t("thread.emptyTitle")}</Text>
+        <Text style={styles.muted}>{t("thread.emptyBody")}</Text>
       </View>
     );
   }
@@ -97,7 +100,9 @@ export function ThreadView({ agentId, theme, onDismiss }: ThreadViewProps) {
   return (
     <View style={styles.root}>
       {others.length > listed.length ? (
-        <Text style={styles.muted}>+{others.length - listed.length} earlier</Text>
+        <Text style={styles.muted}>
+          {t("thread.earlier", { number: String(others.length - listed.length) })}
+        </Text>
       ) : null}
       {listed.map((exchange) => (
         <OtherQuestion
@@ -118,7 +123,7 @@ export function ThreadView({ agentId, theme, onDismiss }: ThreadViewProps) {
           <>
             {isLatest ? null : (
               <Action
-                label="Latest"
+                label={t("thread.latest")}
                 icon="CornerDownRight"
                 styles={styles}
                 theme={theme}
@@ -127,7 +132,7 @@ export function ThreadView({ agentId, theme, onDismiss }: ThreadViewProps) {
             )}
             {others.length > 0 ? (
               <Action
-                label="Clear earlier"
+                label={t("thread.clearEarlier")}
                 icon="Eraser"
                 styles={styles}
                 theme={theme}
@@ -153,11 +158,12 @@ function OtherQuestion({
   styles: Styles;
   onPress(): void;
 }) {
-  const pending = exchange.status === "answering" ? " (answering…)" : "";
+  const t = useText();
+  const pending = exchange.status === "answering" ? t("thread.answeringSuffix") : "";
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Show side question: ${exchange.question}`}
+      accessibilityLabel={t("thread.showQuestion", { question: exchange.question })}
       onPress={onPress}
     >
       <Text style={styles.muted} numberOfLines={1}>
@@ -181,13 +187,14 @@ function ExchangeView({ agentId, exchange, theme, styles, onDismiss, footer }: E
   const stop = useRpc(stopSideQuestion);
   const queryClient = useQueryClient();
   const toast = useToast();
+  const t = useText();
   const answering = exchange.status === "answering";
   const answer = useRevealedText(exchange.answer, answering ? "streaming" : "complete");
 
   const stopAnswer = useMutation({
     mutationFn: () => stop({ agentId, exchangeId: exchange.id }),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: threadQueryKey(agentId) }),
-    onError: (error) => toast.error(`Could not stop the side question: ${messageOf(error)}`),
+    onError: (error) => toast.error(t("thread.stopFailed", { error: messageOf(error) })),
   });
 
   // A fresh timestamp per copy restarts the timer when Copy is pressed again while the check shows.
@@ -196,9 +203,9 @@ function ExchangeView({ agentId, exchange, theme, styles, onDismiss, footer }: E
     mutationFn: () => copyText(exchange.answer),
     onSuccess: () => {
       setCopiedAt(Date.now());
-      AccessibilityInfo.announceForAccessibility("Answer copied");
+      AccessibilityInfo.announceForAccessibility(t("thread.copiedAnnouncement"));
     },
-    onError: (error) => toast.error(`Could not copy the answer: ${messageOf(error)}`),
+    onError: (error) => toast.error(t("thread.copyFailed", { error: messageOf(error) })),
   });
   useEffect(() => {
     if (copiedAt === null) return;
@@ -215,7 +222,7 @@ function ExchangeView({ agentId, exchange, theme, styles, onDismiss, footer }: E
         {onDismiss ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Dismiss side question"
+            accessibilityLabel={t("thread.dismiss")}
             hitSlop={8}
             onPress={onDismiss}
           >
@@ -227,15 +234,17 @@ function ExchangeView({ agentId, exchange, theme, styles, onDismiss, footer }: E
       {answering && !answer ? (
         <View style={styles.status}>
           <ActivityIndicator size="small" color={theme.colors.foregroundMuted} />
-          <Text style={styles.muted}>Answering…</Text>
+          <Text style={styles.muted}>{t("thread.answering")}</Text>
         </View>
       ) : null}
       {exchange.status === "failed" ? (
         <Text selectable style={styles.error}>
-          {exchange.error ?? "No answer."}
+          {exchange.error ?? t("thread.noAnswer")}
         </Text>
       ) : null}
-      {exchange.status === "stopped" ? <Text style={styles.muted}>Stopped.</Text> : null}
+      {exchange.status === "stopped" ? (
+        <Text style={styles.muted}>{t("thread.stopped")}</Text>
+      ) : null}
       <View style={styles.footer}>
         {exchange.model ? (
           <Text style={[styles.muted, styles.model]} numberOfLines={1}>
@@ -244,7 +253,7 @@ function ExchangeView({ agentId, exchange, theme, styles, onDismiss, footer }: E
         ) : null}
         {answering ? (
           <Action
-            label="Stop"
+            label={t("thread.stop")}
             icon="CircleStop"
             styles={styles}
             theme={theme}
@@ -254,7 +263,7 @@ function ExchangeView({ agentId, exchange, theme, styles, onDismiss, footer }: E
         ) : null}
         {exchange.answer && !answering ? (
           <Action
-            label={copiedAt === null ? "Copy" : "Copied"}
+            label={copiedAt === null ? t("thread.copy") : t("thread.copied")}
             icon={copiedAt === null ? "Copy" : "Check"}
             styles={styles}
             theme={theme}

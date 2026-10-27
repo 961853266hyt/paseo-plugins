@@ -2,6 +2,11 @@
   "id": "better-btw",
   "name": "Better btw",
   "description": "Claude Code's /btw: ask about an agent's conversation without interrupting it; answers never enter its history.",
+  "translations": {
+    "zh-CN": {
+      "description": "Claude Code 的 /btw：顺便问一个关于 Agent 对话的问题，不打断它，回答也不会进入它的历史。"
+    }
+  },
   "media": [
     "assets/desktop-panel.png",
     "assets/phone-sheet.png"

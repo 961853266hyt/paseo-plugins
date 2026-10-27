@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { Pressable, View } from "react-native";
 import { askSideQuestion } from "../shared/thread";
 import { announceAsked } from "./asked";
+import { useText } from "./i18n";
 
 type PluginTheme = PluginHostProps["theme"];
 
@@ -12,6 +13,7 @@ type PluginTheme = PluginHostProps["theme"];
 export function AskBox({ agentId, theme }: { agentId: string; theme: PluginTheme }) {
   const ask = useRpc(askSideQuestion);
   const toast = useToast();
+  const t = useText();
   const [text, setText] = useState("");
   const styles = useMemo(() => buildStyles(theme), [theme]);
   const send = useMutation({
@@ -35,14 +37,14 @@ export function AskBox({ agentId, theme }: { agentId: string; theme: PluginTheme
         onSubmitEditing={submit}
         submitBehavior="submit"
         returnKeyType="send"
-        placeholder="Ask a side question…"
+        placeholder={t("ask.placeholder")}
         placeholderTextColor={theme.colors.foregroundMuted}
-        accessibilityLabel="Side question"
+        accessibilityLabel={t("ask.inputLabel")}
         style={styles.input}
       />
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Ask side question"
+        accessibilityLabel={t("ask.send")}
         disabled={!canSend}
         onPress={submit}
         style={[styles.send, !canSend && styles.sendDisabled]}

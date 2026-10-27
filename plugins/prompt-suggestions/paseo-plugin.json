@@ -2,6 +2,12 @@
   "id": "prompt-suggestions",
   "name": "Prompt suggestions",
   "description": "Predicts your next prompt after each agent turn using the Claude Code CLI; Tab accepts it.",
+  "translations": {
+    "zh-CN": {
+      "name": "提示词建议",
+      "description": "每轮结束后用 Claude Code CLI 预测你的下一条消息，按 Tab 即可采用。"
+    }
+  },
   "media": [
     "assets/desktop-placeholder.png",
     "assets/phone-card.png"

@@ -1,10 +1,11 @@
 import type { PluginAgentCommandContext, PluginClientContext } from "@getpaseo/plugin/client";
 import { announceAsked } from "./client/asked";
+import { label, textNow } from "./client/i18n";
 import { canOpenBesideChat } from "./client/layout";
 import { SideQuestionPanel } from "./client/panel";
 import { createPillManager, SIDE_QUESTION_ICON } from "./client/pills";
 import { SideQuestionSettingsScreen } from "./client/settings-screen";
-import { askSideQuestion, getThread, USAGE } from "./shared/thread";
+import { askSideQuestion, getThread } from "./shared/thread";
 
 const PANEL_ID = "side-questions";
 
@@ -27,7 +28,7 @@ export default function contribute(client: PluginClientContext) {
 
   client.addWorkspacePanel({
     id: PANEL_ID,
-    title: "Side questions",
+    title: label("panelTitle"),
     icon: SIDE_QUESTION_ICON,
     context: "agent",
     // The Explorer sidebar keeps the thread beside the chat; the main area takes it when moved there.
@@ -38,8 +39,8 @@ export default function contribute(client: PluginClientContext) {
   // Paseo runs plugin commands in the app and never sends their text to the agent, even mid-turn.
   client.addSlashCommand({
     name: "btw",
-    description: "Ask a quick side question without interrupting the agent",
-    argumentHint: "[question]",
+    description: label("commandDescription"),
+    argumentHint: label("commandArgument"),
     context: "agent",
     async onSubmit({ args, agent, workspace, rpc, openPanel }) {
       if (args) {
@@ -50,7 +51,7 @@ export default function contribute(client: PluginClientContext) {
         // Beside a wide chat the panel opens anyway, since its box can ask the first one.
         const thread = await rpc(getThread, { agentId: agent.id, focusId: null });
         if (thread.exchanges.length === 0) {
-          if (!openBesideChat(openPanel)) throw new Error(USAGE);
+          if (!openBesideChat(openPanel)) throw new Error(textNow(client, "usage"));
           return;
         }
       }
@@ -62,7 +63,7 @@ export default function contribute(client: PluginClientContext) {
 
   client.addCommandCenterItem({
     id: "side-questions",
-    title: "Side questions (/btw)",
+    title: label("commandCenterTitle"),
     icon: SIDE_QUESTION_ICON,
     keywords: ["btw", "side question", "ask"],
     context: "agent",
@@ -79,7 +80,7 @@ export default function contribute(client: PluginClientContext) {
   client.addSettingsScreen({
     id: "settings",
     // The menu item sits in this plugin's own menu, so it names the action, not the plugin.
-    title: "Settings",
+    title: label("settingsScreen"),
     icon: "Settings",
     Component: SideQuestionSettingsScreen,
   });

@@ -2,19 +2,21 @@ import type {
   PluginButtonContentProps,
   PluginButtonRegistration,
   PluginClientContext,
+  PluginText,
 } from "@getpaseo/plugin/client";
 import type { ComponentType } from "react";
 import { View } from "react-native";
 import { type ExchangeStatus, getThread } from "../shared/thread";
 import { AskBox } from "./ask-box";
 import { onAsked } from "./asked";
+import { label } from "./i18n";
 import { ThreadView } from "./thread-view";
 
 export const SIDE_QUESTION_ICON = "MessageCircleQuestionMark";
 const POLL_MS = 1_000;
 
 interface Pill {
-  registration: PluginButtonRegistration;
+  registration: PluginButtonRegistration<PluginText>;
   timer: ReturnType<typeof setTimeout> | null;
 }
 
@@ -75,7 +77,7 @@ export function createPillManager(client: PluginClientContext): PillManager {
           workspaceId,
           agentId,
           button: {
-            title: "Side question",
+            title: label("pill.title"),
             icon: SIDE_QUESTION_ICON,
             label: labelFor("answering"),
             behavior: { kind: "popover", Content: Sheet },
@@ -113,17 +115,17 @@ function createSheet(hide: (agentId: string) => void): ComponentType<PluginButto
   };
 }
 
-function labelFor(status: ExchangeStatus | null): string {
+function labelFor(status: ExchangeStatus | null): PluginText {
   switch (status) {
     case "answering":
-      return "Answering…";
+      return label("pill.answering");
     case "answered":
-      return "Side answer";
+      return label("pill.answered");
     case "failed":
-      return "No answer";
+      return label("pill.failed");
     case "stopped":
-      return "Stopped";
+      return label("pill.stopped");
     case null:
-      return "Side questions";
+      return label("pill.idle");
   }
 }

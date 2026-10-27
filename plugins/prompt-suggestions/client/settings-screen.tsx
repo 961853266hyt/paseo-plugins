@@ -13,6 +13,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Text } from "react-native";
 import { suggestionSettings } from "../shared/settings";
+import { type TextKey, useText } from "./i18n";
 
 type ReadySettings = Extract<SettingsState<typeof suggestionSettings.schema>, { status: "ready" }>;
 
@@ -21,19 +22,24 @@ interface Option {
   value: string;
 }
 
+interface TextOption {
+  label: TextKey;
+  value: string;
+}
+
 const EVERY_AGENT = "every";
 
 // Other values are provider IDs; every agent is stored as an empty list.
-const agentOptions: Option[] = [
-  { label: "All agents", value: EVERY_AGENT },
-  { label: "Claude agents only", value: "claude" },
+const agentOptions: TextOption[] = [
+  { label: "settings.allAgents", value: EVERY_AGENT },
+  { label: "settings.claudeOnly", value: "claude" },
 ];
 
 // Claude Code aliases, so each follows the newest model of its family.
-const latestModels: Option[] = [
-  { label: "Latest Haiku", value: "haiku" },
-  { label: "Latest Sonnet", value: "sonnet" },
-  { label: "Latest Opus", value: "opus" },
+const latestModels: TextOption[] = [
+  { label: "settings.latestHaiku", value: "haiku" },
+  { label: "settings.latestSonnet", value: "sonnet" },
+  { label: "settings.latestOpus", value: "opus" },
 ];
 
 /**
@@ -42,6 +48,7 @@ const latestModels: Option[] = [
  */
 function useModelOptions(): Option[] {
   const paseo = usePaseo();
+  const t = useText();
   const [models, setModels] = useState<Option[]>([]);
   useEffect(() => {
     let active = true;
@@ -60,22 +67,30 @@ function useModelOptions(): Option[] {
       active = false;
     };
   }, [paseo]);
-  return useMemo(() => [...latestModels, ...models], [models]);
+  return useMemo(
+    () => [...latestModels.map((option) => ({ ...option, label: t(option.label) })), ...models],
+    [models, t],
+  );
 }
 
 export function SuggestionSettingsScreen({ theme }: PluginSurfaceProps) {
   const settings = useSettings(suggestionSettings);
+  const t = useText();
   const style = useMemo(() => ({ color: theme.colors.foreground }), [theme]);
-  if (settings.status === "loading") return <Text style={style}>Loading settings…</Text>;
+  if (settings.status === "loading") return <Text style={style}>{t("settings.loading")}</Text>;
   if (settings.status !== "ready") {
     return (
-      <SettingsSection title="Prompt suggestions">
+      <SettingsSection title={t("settings.section")}>
         <Text style={style}>{settings.error}</Text>
-        <SettingsAction label="Try again" actionLabel="Reload" onPress={settings.reload} />
+        <SettingsAction
+          label={t("settings.tryAgain")}
+          actionLabel={t("settings.reload")}
+          onPress={settings.reload}
+        />
         {settings.status === "invalid" ? (
           <SettingsAction
-            label="Restore default settings"
-            actionLabel="Reset"
+            label={t("settings.restoreDefaults")}
+            actionLabel={t("settings.reset")}
             onPress={settings.reset}
           />
         ) : null}
@@ -86,7 +101,12 @@ export function SuggestionSettingsScreen({ theme }: PluginSurfaceProps) {
 }
 
 function SettingsForm({ settings, style }: { settings: ReadySettings; style: { color: string } }) {
+  const t = useText();
   const modelOptions = useModelOptions();
+  const agentChoices = useMemo(
+    () => agentOptions.map((option) => ({ ...option, label: t(option.label) })),
+    [t],
+  );
   const changeAgents = useCallback(
     (agents: string) => {
       const providers = agents === EVERY_AGENT ? [] : [agents];
@@ -102,20 +122,20 @@ function SettingsForm({ settings, style }: { settings: ReadySettings; style: { c
   );
   const { providers, model } = settings.values;
   return (
-    <SettingsSection title="Prompt suggestions">
+    <SettingsSection title={t("settings.section")}>
       <SettingsCard>
         <SettingsSelect
-          label="Suggest for"
-          hint="Each prediction sends the recent conversation to Anthropic. Choose Claude agents only to keep conversations with other agents off it."
+          label={t("settings.suggestFor")}
+          hint={t("settings.suggestForHint")}
           // A list saved by an earlier build shows as is until another option is chosen.
           value={providers.length === 0 ? EVERY_AGENT : providers.join(", ")}
-          options={agentOptions}
+          options={agentChoices}
           disabled={settings.saving}
           onValueChange={changeAgents}
         />
         <SettingsSelect
-          label="Model"
-          hint="Latest follows the newest model of each family. Haiku is the fastest; larger models predict more slowly and use more of your Claude usage."
+          label={t("settings.model")}
+          hint={t("settings.modelHint")}
           value={model}
           options={modelOptions}
           disabled={settings.saving}

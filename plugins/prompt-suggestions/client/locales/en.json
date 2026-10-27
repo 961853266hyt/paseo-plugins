@@ -1,0 +1,31 @@
+{
+  "settingsScreen": "Settings",
+  "card": {
+    "send": "Send",
+    "sending": "Sending…",
+    "copy": "Copy",
+    "sendLabel": "Send suggested message: {{text}}",
+    "copyLabel": "Copy suggested message",
+    "copiedLabel": "Suggested message copied",
+    "copiedAnnouncement": "Suggestion copied",
+    "sendFailed": "Could not send the suggestion: {{error}}",
+    "copyFailed": "Could not copy the suggestion: {{error}}"
+  },
+  "settings": {
+    "section": "Prompt suggestions",
+    "loading": "Loading settings…",
+    "tryAgain": "Try again",
+    "reload": "Reload",
+    "restoreDefaults": "Restore default settings",
+    "reset": "Reset",
+    "suggestFor": "Suggest for",
+    "suggestForHint": "Each prediction sends the recent conversation to Anthropic. Choose Claude agents only to keep conversations with other agents off it.",
+    "allAgents": "All agents",
+    "claudeOnly": "Claude agents only",
+    "model": "Model",
+    "modelHint": "Latest follows the newest model of each family. Haiku is the fastest; larger models predict more slowly and use more of your Claude usage.",
+    "latestHaiku": "Latest Haiku",
+    "latestSonnet": "Latest Sonnet",
+    "latestOpus": "Latest Opus"
+  }
+}

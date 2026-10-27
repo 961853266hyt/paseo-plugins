@@ -11,6 +11,7 @@ import {
 } from "react";
 import { AccessibilityInfo, Pressable, Text, View } from "react-native";
 import type { SuggestionRow } from "../shared/suggestion-row";
+import { useText } from "./i18n";
 import { needsCard, type SuggestionStore } from "./suggestion-store";
 import { isComposerBridgeSupported } from "./web";
 
@@ -72,10 +73,11 @@ interface SuggestionCardProps {
 function SuggestionCard({ agentId, text, theme, onDone }: SuggestionCardProps) {
   const paseo = usePaseo();
   const toast = useToast();
+  const t = useText();
   const send = useMutation({
     mutationFn: () => paseo.agents.ref(agentId).send(text),
     onSuccess: onDone,
-    onError: (error) => toast.error(`Could not send the suggestion: ${messageOf(error)}`),
+    onError: (error) => toast.error(t("card.sendFailed", { error: messageOf(error) })),
   });
   // A fresh timestamp per copy restarts the timer when Copy is pressed again while the check shows.
   const [copiedAt, setCopiedAt] = useState<number | null>(null);
@@ -83,9 +85,9 @@ function SuggestionCard({ agentId, text, theme, onDone }: SuggestionCardProps) {
     mutationFn: () => copyText(text),
     onSuccess: () => {
       setCopiedAt(Date.now());
-      AccessibilityInfo.announceForAccessibility("Suggestion copied");
+      AccessibilityInfo.announceForAccessibility(t("card.copiedAnnouncement"));
     },
-    onError: (error) => toast.error(`Could not copy the suggestion: ${messageOf(error)}`),
+    onError: (error) => toast.error(t("card.copyFailed", { error: messageOf(error) })),
   });
   useEffect(() => {
     if (copiedAt === null) return;
@@ -104,22 +106,22 @@ function SuggestionCard({ agentId, text, theme, onDone }: SuggestionCardProps) {
       </Text>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`Send suggested message: ${text}`}
+        accessibilityLabel={t("card.sendLabel", { text })}
         disabled={isBusy}
         onPress={() => send.mutate()}
         style={styles.primary}
       >
-        <Text style={styles.primaryLabel}>{send.isPending ? "Sending…" : "Send"}</Text>
+        <Text style={styles.primaryLabel}>{send.isPending ? t("card.sending") : t("card.send")}</Text>
       </Pressable>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={copied ? "Suggested message copied" : "Copy suggested message"}
+        accessibilityLabel={copied ? t("card.copiedLabel") : t("card.copyLabel")}
         disabled={isBusy}
         onPress={() => copy.mutate()}
         style={copied ? styles.copied : styles.secondary}
       >
         {/* The label stays laid out under the check so the button keeps its size. */}
-        <Text style={copied ? styles.hiddenLabel : styles.secondaryLabel}>Copy</Text>
+        <Text style={copied ? styles.hiddenLabel : styles.secondaryLabel}>{t("card.copy")}</Text>
         {copied ? (
           <View style={styles.copiedIcon}>
             <Icon name="Check" size={14} color={theme.colors.statusSuccess} />
