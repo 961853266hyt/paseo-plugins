@@ -12,6 +12,8 @@ Better btw 把 Claude Code 的 `/btw` 带到了 Paseo：在不打断 Agent 的�
 
 需要 Paseo 0.11.2 或更高版本，并且在 daemon 所在的机器上安装并登录 Claude Code CLI（`claude`）。无论你问的是哪个 Agent，顺便问都通过这个 CLI 运行。
 
+在 Paseo 0.13 及以上版本中，插件的文字会跟随应用的语言，显示英文或简体中文；更早的版本显示英文。
+
 ## 设置
 
 在“设置 → 插件”里，打开 Better btw 的 ⋯ 菜单并选择“设置”。这个设置由同一主机的所有客户端共享：

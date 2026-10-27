@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0
+
+- On Paseo 0.13 and later the plugin follows the app's language, in English or Simplified
+  Chinese: the `/btw` command and its Command Center item, the Side questions panel, pill and
+  question box, the settings, and the plugin's description and listing page. Earlier Paseo
+  versions show English as before.
+
 ## 0.1.1
 
 - Added screenshots of the desktop panel and the phone sheet to the plugin listing and the npm

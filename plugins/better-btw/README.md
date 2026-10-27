@@ -37,6 +37,8 @@ Update it later with `paseo plugin update better-btw`. Plugins are trusted code:
 
 Requires Paseo 0.11.2 or later and the Claude Code CLI (`claude`) installed and signed in on the daemon host. Side questions run through that CLI whichever agent you ask about.
 
+On Paseo 0.13 or later the plugin shows its text in the app's language, English or Simplified Chinese; earlier versions show English.
+
 ## Settings
 
 In Settings → Plugins, open the ⋯ menu of Better btw and choose Settings. The setting is shared by every client of the host:
