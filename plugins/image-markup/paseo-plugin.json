@@ -1,0 +1,17 @@
+{
+  "id": "image-markup",
+  "name": "Image markup",
+  "description": "Annotate chat images with a pen, arrows, boxes, text, blur and crop, then add the result to your message.",
+  "translations": {
+    "zh-CN": {
+      "description": "标注聊天里的图片：画笔、箭头、方框、文字、打码和裁剪，改好后直接添加到消息里。"
+    }
+  },
+  "media": [
+    "assets/editor.png",
+    "assets/agent-reply.png"
+  ],
+  "requirements": {
+    "paseo": ">=0.12.0"
+  }
+}

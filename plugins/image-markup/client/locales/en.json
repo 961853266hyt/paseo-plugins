@@ -1,0 +1,33 @@
+{
+  "annotate": "Annotate",
+  "editorTitle": "Annotate image",
+  "tools": {
+    "pen": "Pen",
+    "arrow": "Arrow",
+    "rect": "Rectangle",
+    "text": "Text",
+    "blur": "Blur",
+    "crop": "Crop"
+  },
+  "color": "Color {{color}}",
+  "sizes": {
+    "1": "Thin",
+    "2": "Medium",
+    "3": "Thick"
+  },
+  "undo": "Undo",
+  "redo": "Redo",
+  "cancel": "Cancel",
+  "copy": "Copy",
+  "copied": "Copied to the clipboard.",
+  "download": "Download",
+  "send": "Add to message",
+  "replaceOriginal": "Replace the original",
+  "textPlaceholder": "Type, then Enter",
+  "errors": {
+    "noImage": "No image to annotate here.",
+    "loadFailed": "Could not open this image: {{error}}",
+    "noComposer": "No message box to add the image to here. Copy or download it instead.",
+    "pasteRejected": "The message box did not take the image. Check that the host is connected and dictation is off, then try again."
+  }
+}

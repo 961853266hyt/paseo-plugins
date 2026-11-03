@@ -1,0 +1,33 @@
+{
+  "annotate": "标注",
+  "editorTitle": "标注图片",
+  "tools": {
+    "pen": "画笔",
+    "arrow": "箭头",
+    "rect": "矩形",
+    "text": "文字",
+    "blur": "打码",
+    "crop": "裁剪"
+  },
+  "color": "颜色 {{color}}",
+  "sizes": {
+    "1": "细",
+    "2": "中",
+    "3": "粗"
+  },
+  "undo": "撤销",
+  "redo": "重做",
+  "cancel": "取消",
+  "copy": "复制",
+  "copied": "已复制到剪贴板。",
+  "download": "下载",
+  "send": "添加到消息",
+  "replaceOriginal": "替换原图",
+  "textPlaceholder": "输入文字，回车完成",
+  "errors": {
+    "noImage": "这里没有可标注的图片。",
+    "loadFailed": "无法打开这张图片：{{error}}",
+    "noComposer": "这里没有可以添加图片的消息框，可以复制或下载。",
+    "pasteRejected": "消息框没有接收这张图片。请确认主机已连接、听写已关闭，然后重试。"
+  }
+}
