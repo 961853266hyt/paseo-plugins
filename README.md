@@ -8,6 +8,7 @@ with its own manifest, README, overview, changelog and license.
 | [Prompt suggestions](plugins/prompt-suggestions) | Predicts your next prompt after each agent turn. Tab accepts it on web and desktop; phones get a tap-to-send card. Needs the Claude Code CLI on the daemon host. |
 | [Better btw](plugins/better-btw) | Claude Code's `/btw`: ask about an agent's conversation without interrupting it; the answer never enters its history. Needs the Claude Code CLI on the daemon host. |
 | [Image markup](plugins/image-markup) | Annotate a chat image with pen, arrows, boxes, text, blur and crop, then add it to your message. Web and desktop app. |
+| [Design canvas](plugins/design-canvas) | A Claude Design-style canvas: agents draw HTML designs, you comment on elements, and the agent revises. Web and desktop app, Paseo 0.14 or later. |
 
 ## Install
 
@@ -24,6 +25,7 @@ From npm, which has each release as soon as it is published:
 paseo plugin install npm:paseo-prompt-suggestions
 paseo plugin install npm:paseo-better-btw
 paseo plugin install npm:paseo-image-markup
+paseo plugin install npm:paseo-design-canvas
 ```
 
 Straight from this repository:
@@ -32,6 +34,7 @@ Straight from this repository:
 paseo plugin install git:961853266hyt/paseo-plugins:plugins/prompt-suggestions
 paseo plugin install git:961853266hyt/paseo-plugins:plugins/better-btw
 paseo plugin install git:961853266hyt/paseo-plugins:plugins/image-markup
+paseo plugin install git:961853266hyt/paseo-plugins:plugins/design-canvas
 ```
 
 Update any of them with `paseo plugin update <id>`, such as `paseo plugin update better-btw`.

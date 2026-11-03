@@ -1,0 +1,17 @@
+{
+  "id": "design-canvas",
+  "name": "Design canvas",
+  "description": "A Claude Design-style canvas: agents draw HTML designs, you comment on elements, and the agent revises.",
+  "translations": {
+    "zh-CN": {
+      "description": "仿 Claude Design 的设计画布：agent 用 HTML 画设计，你点选元素留评论，agent 接着改。"
+    }
+  },
+  "media": [
+    "assets/canvas.png",
+    "assets/comment.png"
+  ],
+  "requirements": {
+    "paseo": ">=0.14.0"
+  }
+}

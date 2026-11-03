@@ -1,0 +1,41 @@
+{
+  "name": "paseo-design-canvas",
+  "version": "0.1.0",
+  "files": [
+    "paseo-plugin.json",
+    "OVERVIEW.md",
+    "OVERVIEW.*.md",
+    "CHANGELOG.md",
+    "assets/",
+    "index.client.tsx",
+    "index.server.ts",
+    "client/",
+    "server/",
+    "shared/",
+    "LICENSE"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@getpaseo/plugin": "0.15.0",
+    "@tanstack/react-query": "^5.90.11",
+    "@types/node": "^22.12.0",
+    "@types/react": "~19.2.0",
+    "happy-dom": "^20.0.0",
+    "react": "19.1.0",
+    "react-native": "0.81.5",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4",
+    "zod": "^4.4.3"
+  },
+  "description": "A Claude Design-style canvas for Paseo: agents draw HTML designs, you point at elements and comment, and the agent revises.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/961853266hyt/paseo-plugins.git",
+    "directory": "plugins/design-canvas"
+  },
+  "type": "module"
+}
