@@ -757,7 +757,8 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
   }
 
   function showEmpty(): void {
-    hideEmpty();
+    // The list is polled; keep the card that is up, or a half-typed brief would be lost.
+    if (empty) return;
     empty = el("div", "dc-empty");
     empty.append(newDesignCard(false));
     viewport.append(empty);

@@ -77,10 +77,10 @@ async function settle(): Promise<void> {
   for (let i = 0; i < 5; i++) await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-function mount(api: CanvasApi) {
+function mount(api: CanvasApi, pollMs = 60_000) {
   const host = document.createElement("div");
   document.body.append(host);
-  handle = mountCanvas({ host, t, api, theme, initialSlug: null, onSlugChange: () => {}, pollMs: 60_000 });
+  handle = mountCanvas({ host, t, api, theme, initialSlug: null, onSlugChange: () => {}, pollMs });
   return host;
 }
 
@@ -96,6 +96,19 @@ describe("canvas", () => {
     (card!.querySelector(".dc-primary") as HTMLButtonElement).click();
     await settle();
     expect(api.startDesign).toHaveBeenCalledWith("A pricing page");
+  });
+
+  test("polling the empty list keeps a half-typed brief", async () => {
+    const api = fakeApi(null);
+    const listDesigns = vi.spyOn(api, "listDesigns");
+    const host = mount(api, 5);
+    await settle();
+    const area = host.querySelector('[data-testid="design-canvas-new"] textarea') as HTMLTextAreaElement;
+    area.value = "A pricing page with";
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    expect(listDesigns.mock.calls.length).toBeGreaterThan(1);
+    expect(host.querySelectorAll('[data-testid="design-canvas-new"]')).toHaveLength(1);
+    expect((host.querySelector('[data-testid="design-canvas-new"] textarea') as HTMLTextAreaElement).value).toBe("A pricing page with");
   });
 
   test("shows each artboard in a sandboxed frame with the runtime and CSP", async () => {
