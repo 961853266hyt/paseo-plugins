@@ -6,9 +6,13 @@ import {
   commentSchema,
   commentStatusSchema,
   designKindSchema,
+  editTextSchema,
+  moveStyleSchema,
   manifestSchema,
   slugSchema,
+  textTargetSchema,
 } from "./design";
+import { tweakValueSchema } from "./tweaks";
 
 const workspaceInput = z.object({ workspaceId: z.string().min(1) });
 const designInput = workspaceInput.extend({ slug: slugSchema });
@@ -42,6 +46,8 @@ export const artboardViewSchema = artboardSchema.extend({
   error: z.string().nullable(),
   /** Changes whenever the page or a file it uses changes. */
   version: z.string(),
+  /** A hash of the page's own HTML, which an edit must match to be written. */
+  source: z.string(),
 });
 export type ArtboardView = z.infer<typeof artboardViewSchema>;
 
@@ -52,6 +58,8 @@ export const designViewSchema = z.object({
   error: z.string().nullable(),
   artboards: z.array(artboardViewSchema),
   comments: z.array(commentSchema),
+  /** The tweaks the user moved away from their defaults. */
+  tweakValues: z.record(z.string(), tweakValueSchema),
   version: z.string(),
 });
 export type DesignView = z.infer<typeof designViewSchema>;
@@ -103,4 +111,53 @@ export const initCanvas = defineRpc({
   name: "init_canvas",
   input: workspaceInput,
   output: z.object({ created: z.boolean() }),
+});
+
+/** Writes a dragged element's new position into its page, if the page is still the one the canvas showed. */
+export const moveElement = defineRpc({
+  name: "move_element",
+  input: designInput.extend({
+    artboardId: slugSchema,
+    dcId: z.string().min(1).max(120),
+    style: moveStyleSchema,
+    /** The `source` hash the canvas last saw. */
+    expected: z.string(),
+  }),
+  output: z.object({ source: z.string(), version: z.string() }),
+});
+
+/** Remembers where an artboard was dragged; null puts it back in the automatic layout. */
+export const moveArtboard = defineRpc({
+  name: "move_artboard",
+  input: designInput.extend({
+    artboardId: slugSchema,
+    position: z.object({ x: z.number().int(), y: z.number().int() }).nullable(),
+  }),
+  output: z.object({}),
+});
+
+/** Replaces one text node's text in its page, if the page is still the one the canvas showed. */
+export const editText = defineRpc({
+  name: "edit_text",
+  input: designInput.extend({
+    artboardId: slugSchema,
+    target: textTargetSchema,
+    before: editTextSchema,
+    after: editTextSchema,
+    expected: z.string(),
+  }),
+  output: z.object({ source: z.string(), version: z.string() }),
+});
+
+/** Saves tweak values and regenerates tweaks.css. */
+export const saveTweaks = defineRpc({
+  name: "save_tweaks",
+  input: designInput.extend({
+    values: z.record(z.string(), tweakValueSchema),
+  }),
+  output: z.object({
+    values: z.record(z.string(), tweakValueSchema),
+    /** Each artboard's version after the write. */
+    versions: z.record(z.string(), z.string()),
+  }),
 });

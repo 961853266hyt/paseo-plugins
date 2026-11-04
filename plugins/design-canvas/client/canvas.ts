@@ -1,5 +1,5 @@
-import { type Anchor, type Comment, type CommentStatus, isOpen } from "../shared/design";
-import { commentsPrompt } from "../shared/prompts";
+import { type Anchor, type Comment, type CommentStatus, isOpen, type MoveStyle, type TextTarget } from "../shared/design";
+import { applyTweaksPrompt, commentsPrompt, tweaksPrompt } from "../shared/prompts";
 import type { ArtboardView, DesignSummary, DesignView } from "../shared/rpc";
 import {
   type CanvasMode,
@@ -10,6 +10,17 @@ import {
   PROTOCOL_MARK,
   type RuntimeCommand,
 } from "../shared/runtime-protocol";
+import {
+  checkValue,
+  effectiveValue,
+  formatValue,
+  overrides,
+  prune,
+  type Tweak,
+  type TweakValue,
+  type TweakValues,
+  usesVariable,
+} from "../shared/tweaks";
 import { icon, type IconName } from "./icons";
 import {
   bounds,
@@ -44,6 +55,14 @@ export interface CanvasApi {
   updateComment(slug: string, id: string, patch: { body?: string; status?: CommentStatus }): Promise<Comment>;
   deleteComment(slug: string, id: string): Promise<void>;
   markSent(slug: string, ids: string[]): Promise<void>;
+  /** Writes a moved element's style into its page; rejects when the page changed since `expected`. */
+  moveElement(slug: string, artboardId: string, dcId: string, style: MoveStyle, expected: string): Promise<{ source: string; version: string }>;
+  /** Replaces one text node's text in its page; rejects when the page changed since `expected`. */
+  editText(slug: string, artboardId: string, target: TextTarget, before: string, after: string, expected: string): Promise<{ source: string; version: string }>;
+  /** Saves tweak values and returns each artboard's new version. */
+  saveTweaks(slug: string, values: TweakValues): Promise<{ values: TweakValues; versions: Record<string, string> }>;
+  /** Pins an artboard on the canvas, or with null returns it to the automatic layout. */
+  moveArtboard(slug: string, artboardId: string, position: { x: number; y: number } | null): Promise<void>;
   /** Sends a message to the panel's agent, as if typed in its chat. */
   sendToAgent(text: string): Promise<void>;
   /** Sets the workspace up for the canvas and asks the agent for a new design. */
@@ -77,7 +96,18 @@ interface Board {
   height: number;
   ready: boolean;
   placed: Placed | null;
+  /** The version our own last write produced, so the canvas does not reload a page it just edited. */
+  selfVersion: string | null;
+  /** Writes to this page, one after another. */
+  writing: Promise<void>;
+  /** The user is typing in this page, so it must not reload. */
+  editing: boolean;
 }
+
+type UndoEntry =
+  | { kind: "element"; boardId: string; dcId: string; before: MoveStyle; after: MoveStyle }
+  | { kind: "text"; boardId: string; target: TextTarget; before: string; after: string }
+  | { kind: "artboard"; boardId: string; before: { x: number; y: number } | null; after: { x: number; y: number } | null };
 
 type Popover =
   | { kind: "new"; boardId: string; picked: Picked; viewport: { x: number; y: number; width: number; height: number } }
@@ -106,7 +136,11 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
     node.innerHTML = iconName ? icon(iconName) : "";
     if (label) {
       if (className.includes("dc-icon")) {
-        node.title = label;
+        // Our own tooltip: the native title one waits about a second and Paseo often never shows it.
+        // A trailing "(V)" or "（⌘/Ctrl+0）" becomes the shortcut shown beside the name.
+        const match = /^(.*?)\s*[(（]([^()（）]+)[)）]$/.exec(label);
+        node.dataset.tip = match ? match[1]! : label;
+        if (match) node.dataset.key = match[2]!;
         node.setAttribute("aria-label", label);
       } else node.append(doc.createTextNode(label));
     }
@@ -130,10 +164,13 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
   const toolbar = el("div", "dc-toolbar");
   const picker = el("select", "dc-select");
   picker.setAttribute("aria-label", t("designPicker"));
-  const browseButton = button(t("browseMode"), "pointer", () => setMode("browse"), "dc-btn");
-  const commentButton = button(t("commentMode"), "comment", () => setMode("comment"), "dc-btn");
-  browseButton.title = `${t("browseMode")} (V)`;
-  commentButton.title = `${t("commentMode")} (C)`;
+  const tools: Array<[CanvasMode, HTMLButtonElement]> = [
+    ["move", button(`${t("toolMove")} (V)`, "pointer", () => setMode("move"), "dc-btn dc-icon")],
+    ["hand", button(`${t("toolHand")} (H)`, "hand", () => setMode("hand"), "dc-btn dc-icon")],
+    ["comment", button(`${t("commentMode")} (C)`, "comment", () => setMode("comment"), "dc-btn dc-icon")],
+    ["preview", button(`${t("toolPreview")} (P)`, "play", () => setMode("preview"), "dc-btn dc-icon")],
+  ];
+  for (const [name, node] of tools) node.dataset.tool = name;
   const zoomOut = button(t("zoomOut"), "minus", () => zoomStep(-1), "dc-btn dc-icon");
   const zoomLabel = el("span", "dc-zoom", "100%");
   const zoomIn = button(t("zoomIn"), "plus", () => zoomStep(1), "dc-btn dc-icon");
@@ -141,12 +178,12 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
   const guidesButton = button(t("guides"), "grid", () => setGuides(!guides), "dc-btn dc-icon");
   const status = el("span", "dc-status");
   const newButton = button(t("newDesign"), "sparkles", () => openNewDesign(), "dc-btn");
-  const sideButton = button(t("comments"), "panel", () => setSideOpen(side.hidden), "dc-btn");
+  const sideButton = button(t("comments"), "panel", () => toggleSide("comments"), "dc-btn");
+  const tweaksButton = button(t("tweaks"), "sliders", () => toggleSide("tweaks"), "dc-btn");
   toolbar.append(
     picker,
     el("span", "dc-sep"),
-    browseButton,
-    commentButton,
+    ...tools.map(([, node]) => node),
     el("span", "dc-sep"),
     zoomOut,
     zoomLabel,
@@ -156,6 +193,7 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
     el("span", "dc-spacer"),
     status,
     newButton,
+    tweaksButton,
     sideButton,
   );
 
@@ -165,12 +203,16 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
   viewport.append(world);
   const side = el("div", "dc-side");
   const sideHead = el("div", "dc-side-head");
-  const sideTitle = el("span", "", t("comments"));
+  const commentsTab = button(t("comments"), null, () => setSide("comments"), "dc-tab");
+  const tweaksTab = button(t("tweaks"), null, () => setSide("tweaks"), "dc-tab");
   const resolvedToggle = el("label", "dc-check");
   const resolvedBox = el("input");
   resolvedBox.type = "checkbox";
   resolvedToggle.append(resolvedBox, doc.createTextNode(t("showResolved")));
-  sideHead.append(sideTitle, el("span", "dc-spacer"), resolvedToggle);
+  sideHead.append(commentsTab, tweaksTab);
+  const commentsPane = el("div", "dc-pane");
+  const commentsBar = el("div", "dc-pane-bar");
+  commentsBar.append(resolvedToggle);
   const sideList = el("div", "dc-side-list");
   const sideFoot = el("div", "dc-side-foot");
   const sendButton = button("", "send", () => void sendComments(), "dc-btn dc-primary");
@@ -179,7 +221,20 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
   sendButton.append(sendLabel);
   const sendHint = el("span", "dc-hint");
   sideFoot.append(sendButton, sendHint);
-  side.append(sideHead, sideList, sideFoot);
+  commentsPane.append(commentsBar, sideList, sideFoot);
+  const tweaksPane = el("div", "dc-pane");
+  tweaksPane.dataset.testid = "design-canvas-tweaks";
+  const tweakList = el("div", "dc-side-list dc-tweaks");
+  const tweakFoot = el("div", "dc-side-foot");
+  const tweakActions = el("div", "dc-row dc-tweak-actions");
+  const resetButton = button(t("resetTweaks"), "reopen", () => void resetTweaks());
+  const applyButton = button(t("applyTweaks"), "check", () => void applyTweaks());
+  tweakActions.append(resetButton, applyButton);
+  const suggestButton = button(t("suggestTweaks"), "sparkles", () => void suggestTweaks(), "dc-btn dc-primary");
+  const tweakHint = el("span", "dc-hint");
+  tweakFoot.append(tweakActions, suggestButton, tweakHint);
+  tweaksPane.append(tweakList, tweakFoot);
+  side.append(sideHead, commentsPane, tweaksPane);
   body.append(viewport, side);
   root.append(toolbar, body);
   host.append(root);
@@ -194,9 +249,20 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
   const boards = new Map<string, Board>();
   let view: View = { x: 48, y: 48, zoom: 1 };
   let userMoved = false;
-  let mode: CanvasMode = "browse";
+  let mode: CanvasMode = "move";
+  const undoStack: UndoEntry[] = [];
+  const redoStack: UndoEntry[] = [];
+  const pendingMoves = new Map<string, { board: Board; dcId: string; before: MoveStyle; after: MoveStyle; timer: ReturnType<typeof setTimeout> }>();
+  let unmovableToastAt = 0;
   let guides = false;
   let showResolved = false;
+  let sideTab: "comments" | "tweaks" = "comments";
+  /** The tweak values on screen; ahead of the server's while a save is pending. */
+  let tweakValues: TweakValues = {};
+  let tweakSave: ReturnType<typeof setTimeout> | null = null;
+  let tweakSaving: Promise<void> = Promise.resolve();
+  let tweaksInFlight = 0;
+  let tweaksRendered = "";
   let popover: { state: Popover; node: HTMLDivElement } | null = null;
   let agentStatus: AgentStatus = null;
   let sending = false;
@@ -308,6 +374,7 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
         width: board.view.width,
         height: board.height,
         ...(board.view.group !== undefined ? { group: board.view.group } : {}),
+        ...(board.view.x !== undefined && board.view.y !== undefined ? { x: board.view.x, y: board.view.y } : {}),
       })),
     );
     for (const rect of placed) {
@@ -382,8 +449,11 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
       height: artboard.height ?? DEFAULT_PAGE_HEIGHT,
       ready: false,
       placed: null,
+      selfVersion: null,
+      writing: Promise.resolve(),
+      editing: false,
     };
-    label.addEventListener("click", () => focusBoard(artboard.id));
+    label.addEventListener("pointerdown", (event) => startBoardDrag(board, event));
     boardLabel(board);
     loadFrame(board);
     return board;
@@ -403,7 +473,8 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
         boards.set(artboard.id, createBoard(artboard));
         continue;
       }
-      const reload = existing.view.version !== artboard.version || existing.view.html !== artboard.html;
+      const ours = existing.selfVersion !== null && artboard.version === existing.selfVersion;
+      const reload = !ours && (existing.view.version !== artboard.version || existing.view.html !== artboard.html);
       const resized = existing.view.width !== artboard.width || existing.view.height !== artboard.height;
       existing.view = artboard;
       boardLabel(existing);
@@ -490,6 +561,8 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
     sideButton.lastChild?.remove();
     const open = comments.filter(isOpen).length;
     sideButton.append(doc.createTextNode(open ? `${t("comments")} · ${open}` : t("comments")));
+    commentsTab.textContent = open ? `${t("comments")} · ${open}` : t("comments");
+    renderTweakButtons();
   }
 
   function refreshComments(): void {
@@ -694,10 +767,14 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
 
   function setMode(next: CanvasMode): void {
     mode = next;
-    browseButton.classList.toggle("dc-on", mode === "browse");
-    commentButton.classList.toggle("dc-on", mode === "comment");
+    root.dataset.mode = mode;
+    for (const [name, node] of tools) node.classList.toggle("dc-on", name === mode);
+    // Hand: the artboards stop taking the pointer, so a drag anywhere pans
+    const panning = mode === "hand" || spaceHeld;
+    viewport.classList.toggle("dc-grab", panning);
+    world.classList.toggle("dc-panning", panning);
     broadcast({ type: "mode", mode });
-    if (mode === "browse" && popover?.state.kind === "new") closePopover();
+    if (mode !== "comment" && popover?.state.kind === "new") closePopover();
     renderSide();
   }
 
@@ -707,9 +784,19 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
     broadcast({ type: "guides", on });
   }
 
-  function setSideOpen(open: boolean): void {
-    side.hidden = !open;
-    sideButton.classList.toggle("dc-on", open);
+  function setSide(tab: "comments" | "tweaks" | null): void {
+    side.hidden = tab === null;
+    if (tab) sideTab = tab;
+    commentsPane.hidden = sideTab !== "comments";
+    tweaksPane.hidden = sideTab !== "tweaks";
+    commentsTab.classList.toggle("dc-on", sideTab === "comments");
+    tweaksTab.classList.toggle("dc-on", sideTab === "tweaks");
+    sideButton.classList.toggle("dc-on", tab === "comments");
+    tweaksButton.classList.toggle("dc-on", tab === "tweaks");
+  }
+
+  function toggleSide(tab: "comments" | "tweaks"): void {
+    setSide(!side.hidden && sideTab === tab ? null : tab);
   }
 
   function handleKey(key: string, meta: boolean, shift: boolean): boolean {
@@ -717,15 +804,410 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
     else if (meta && key === "-") zoomStep(-1);
     else if (meta && key === "0") fit();
     else if (shift && (key === "G" || key === "g")) setGuides(!guides);
+    else if (meta && (key === "z" || key === "Z")) void (shift ? redo() : undo());
+    else if (!meta && !shift && key === "v") setMode("move");
+    else if (!meta && !shift && key === "h") setMode("hand");
     else if (!meta && !shift && key === "c") setMode("comment");
-    else if (!meta && !shift && key === "v") setMode("browse");
+    else if (!meta && !shift && key === "p") setMode("preview");
     else if (key === "Escape") {
       if (modal) closeModal();
       else if (popover) closePopover();
-      else if (mode === "comment") setMode("browse");
+      else if (mode === "comment") setMode("move");
       else return false;
     } else return false;
     return true;
+  }
+
+  // ---- Moving ------------------------------------------------------------------------------
+
+  function describeError(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+  }
+
+  /**
+   * Runs one write to a page after earlier writes to it, keeping the page's source hash current.
+   * On failure it puts the page back with `revert` and reloads the design.
+   */
+  function writePage(
+    board: Board,
+    write: (expected: string) => Promise<{ source: string; version: string }>,
+    revert: () => void,
+    errors: { conflict: string; failed: string },
+  ): Promise<boolean> {
+    const run = async (): Promise<boolean> => {
+      if (!slug) return false;
+      try {
+        const result = await write(board.view.source);
+        board.view = { ...board.view, source: result.source };
+        board.selfVersion = result.version;
+        return true;
+      } catch (error) {
+        revert();
+        const message = describeError(error);
+        toast(/changed on disk/.test(message) ? t(errors.conflict, { file: board.view.file }) : t(errors.failed, { error: message }));
+        void loadDesign();
+        return false;
+      }
+    };
+    const next = board.writing.then(run, run);
+    board.writing = next.then(() => undefined);
+    return next;
+  }
+
+  /** Writes one element's style. */
+  function writeElement(board: Board, dcId: string, style: MoveStyle, revert: MoveStyle): Promise<boolean> {
+    return writePage(
+      board,
+      (expected) => api.moveElement(slug!, board.view.id, dcId, style, expected),
+      () => post(board, { type: "set-style", dcId, style: revert }),
+      { conflict: "moveConflict", failed: "moveFailed" },
+    );
+  }
+
+  /** Writes one text node's text, which the page shows already. */
+  function writeText(board: Board, target: TextTarget, from: string, to: string): Promise<boolean> {
+    return writePage(
+      board,
+      (expected) => api.editText(slug!, board.view.id, target, from, to, expected),
+      () => post(board, { type: "set-text", target, text: from }),
+      { conflict: "textConflict", failed: "textFailed" },
+    );
+  }
+
+  async function textEdited(board: Board, target: TextTarget, before: string, after: string): Promise<void> {
+    if (await writeText(board, target, before, after)) {
+      undoStack.push({ kind: "text", boardId: board.view.id, target, before, after });
+      redoStack.length = 0;
+    }
+  }
+
+  /** Nudges arrive one per key press: merge them and write once the keys go quiet. */
+  function queueMove(board: Board, dcId: string, before: MoveStyle, after: MoveStyle): void {
+    const key = `${board.view.id}\u0000${dcId}`;
+    const existing = pendingMoves.get(key);
+    if (existing) clearTimeout(existing.timer);
+    const entry = { board, dcId, before: existing?.before ?? before, after, timer: setTimeout(() => void flush(key), 250) };
+    pendingMoves.set(key, entry);
+  }
+
+  async function flush(key: string): Promise<void> {
+    const entry = pendingMoves.get(key);
+    if (!entry) return;
+    pendingMoves.delete(key);
+    if (await writeElement(entry.board, entry.dcId, entry.after, entry.before)) {
+      undoStack.push({ kind: "element", boardId: entry.board.view.id, dcId: entry.dcId, before: entry.before, after: entry.after });
+      redoStack.length = 0;
+    }
+  }
+
+  async function applyEntry(entry: UndoEntry, side: "before" | "after"): Promise<boolean> {
+    const board = boards.get(entry.boardId);
+    if (!board || !slug) return false;
+    if (entry.kind === "element") {
+      const style = entry[side];
+      post(board, { type: "set-style", dcId: entry.dcId, style: style as Record<string, string> });
+      return writeElement(board, entry.dcId, style, side === "before" ? entry.after : entry.before);
+    }
+    if (entry.kind === "text") {
+      const [from, to] = side === "before" ? [entry.after, entry.before] : [entry.before, entry.after];
+      post(board, { type: "set-text", target: entry.target, text: to });
+      return writeText(board, entry.target, from, to);
+    }
+    const position = entry[side];
+    try {
+      await api.moveArtboard(slug, entry.boardId, position);
+      setBoardPosition(board, position);
+      return true;
+    } catch (error) {
+      toast(t("moveFailed", { error: describeError(error) }));
+      return false;
+    }
+  }
+
+  async function undo(): Promise<void> {
+    const entry = undoStack.pop();
+    if (!entry) return;
+    if (await applyEntry(entry, "before")) redoStack.push(entry);
+  }
+
+  async function redo(): Promise<void> {
+    const entry = redoStack.pop();
+    if (!entry) return;
+    if (await applyEntry(entry, "after")) undoStack.push(entry);
+  }
+
+  function setBoardPosition(board: Board, position: { x: number; y: number } | null): void {
+    const { x: _x, y: _y, ...rest } = board.view;
+    board.view = position ? { ...rest, x: position.x, y: position.y } : rest;
+    queueLayout();
+  }
+
+  /** In the Move tool an artboard's title drags the artboard; elsewhere a click on it centres it. */
+  function startBoardDrag(board: Board, event: PointerEvent): void {
+    if (event.button !== 0) return;
+    event.stopPropagation();
+    if (mode !== "move" || !board.placed) {
+      if (mode !== "hand") focusBoard(board.view.id);
+      return;
+    }
+    event.preventDefault();
+    const start = { x: board.placed.x, y: board.placed.y };
+    const before = board.view.x !== undefined && board.view.y !== undefined ? { x: board.view.x, y: board.view.y } : null;
+    const from = { x: event.clientX, y: event.clientY };
+    let moved = false;
+    board.label.setPointerCapture(event.pointerId);
+    world.classList.add("dc-panning");
+    const move = (next: PointerEvent) => {
+      const dx = (next.clientX - from.x) / view.zoom;
+      const dy = (next.clientY - from.y) / view.zoom;
+      if (!moved && Math.abs(dx) + Math.abs(dy) < 3 / view.zoom) return;
+      moved = true;
+      if (!board.placed) return;
+      board.placed = { ...board.placed, x: Math.round(start.x + dx), y: Math.round(start.y + dy) };
+      board.wrap.style.left = `${board.placed.x}px`;
+      board.wrap.style.top = `${board.placed.y}px`;
+      positionPopover();
+    };
+    const up = () => {
+      board.label.removeEventListener("pointermove", move);
+      board.label.removeEventListener("pointerup", up);
+      board.label.removeEventListener("pointercancel", up);
+      if (mode !== "hand" && !spaceHeld) world.classList.remove("dc-panning");
+      if (!moved) {
+        focusBoard(board.view.id);
+        return;
+      }
+      if (!board.placed || !slug) return;
+      const after = { x: board.placed.x, y: board.placed.y };
+      userMoved = true;
+      setBoardPosition(board, after);
+      api.moveArtboard(slug, board.view.id, after).then(
+        () => {
+          undoStack.push({ kind: "artboard", boardId: board.view.id, before, after });
+          redoStack.length = 0;
+        },
+        (error) => {
+          setBoardPosition(board, before);
+          toast(t("moveFailed", { error: describeError(error) }));
+        },
+      );
+    };
+    board.label.addEventListener("pointermove", move);
+    board.label.addEventListener("pointerup", up);
+    board.label.addEventListener("pointercancel", up);
+  }
+
+  // ---- Tweaks ------------------------------------------------------------------------------
+
+  function declaredTweaks(): Tweak[] {
+    return design?.manifest?.tweaks ?? [];
+  }
+
+  /** Variables this design's pages were given, so a tweak that goes away is cleared too. */
+  const sentVars = new Set<string>();
+
+  function sendTweaks(board?: Board): void {
+    const vars: Record<string, string> = Object.fromEntries([...sentVars].map((name) => [name, ""]));
+    Object.assign(vars, overrides(declaredTweaks(), tweakValues));
+    for (const name of Object.keys(vars)) sentVars.add(name);
+    if (board) post(board, { type: "tweaks", vars });
+    else broadcast({ type: "tweaks", vars });
+  }
+
+  function colorHex(value: string): string | null {
+    const short = /^#([0-9a-f])([0-9a-f])([0-9a-f])$/i.exec(value);
+    if (short) return `#${short[1]}${short[1]}${short[2]}${short[2]}${short[3]}${short[3]}`.toLowerCase();
+    return /^#[0-9a-f]{6}$/i.test(value) ? value.toLowerCase() : null;
+  }
+
+  function tweakRow(tweak: Tweak): HTMLElement {
+    const row = el("div", "dc-tweak");
+    row.dataset.tweak = tweak.id;
+    const head = el("div", "dc-tweak-head");
+    const valueLabel = el("span", "dc-tweak-value");
+    head.append(el("span", "dc-tweak-name", tweak.label), valueLabel);
+    row.append(head);
+    const show = (value: TweakValue) => {
+      valueLabel.textContent = tweak.type === "toggle" ? "" : formatValue(tweak, value);
+      row.classList.toggle("dc-changed", value !== tweak.default);
+    };
+    const value = effectiveValue(tweak, tweakValues);
+    show(value);
+    const change = (next: TweakValue) => {
+      const checked = setTweak(tweak, next);
+      if (checked !== null) show(checked);
+      return checked;
+    };
+    if (tweak.type === "color") {
+      const wrap = el("div", "dc-tweak-color");
+      const swatch = el("input");
+      swatch.type = "color";
+      swatch.value = colorHex(String(value)) ?? "#000000";
+      const field = el("input", "dc-input");
+      field.value = String(value);
+      field.spellcheck = false;
+      swatch.addEventListener("input", () => {
+        field.value = swatch.value;
+        change(swatch.value);
+      });
+      field.addEventListener("change", () => {
+        const checked = change(field.value.trim());
+        if (checked === null) field.value = String(effectiveValue(tweak, tweakValues));
+        else swatch.value = colorHex(String(checked)) ?? swatch.value;
+      });
+      wrap.append(swatch, field);
+      row.append(wrap);
+    } else if (tweak.type === "range") {
+      const range = el("input", "dc-range");
+      range.type = "range";
+      range.min = String(tweak.min);
+      range.max = String(tweak.max);
+      range.step = String(tweak.step ?? "any");
+      range.value = String(value);
+      range.addEventListener("input", () => change(Number(range.value)));
+      row.append(range);
+    } else if (tweak.type === "toggle") {
+      const label = el("label", "dc-switch");
+      const box = el("input");
+      box.type = "checkbox";
+      box.checked = value === true;
+      box.addEventListener("change", () => change(box.checked));
+      label.append(box, el("span"));
+      head.append(label);
+    } else if (tweak.options.length <= 4) {
+      const group = el("div", "dc-segments");
+      const buttons = tweak.options.map((option) => {
+        const node = button(option.label, null, () => {
+          if (change(option.value) === null) return;
+          for (const other of buttons) other.classList.toggle("dc-on", other === node);
+        }, "dc-segment");
+        node.classList.toggle("dc-on", option.value === value);
+        return node;
+      });
+      group.append(...buttons);
+      row.append(group);
+    } else {
+      const select = el("select", "dc-select");
+      for (const option of tweak.options) {
+        const node = el("option", "", option.label);
+        node.value = option.value;
+        select.append(node);
+      }
+      select.value = String(value);
+      select.addEventListener("change", () => change(select.value));
+      row.append(select);
+    }
+    const used = design?.artboards.some((artboard) => artboard.html !== null && usesVariable(artboard.html, tweak.var));
+    if (!used) row.append(el("div", "dc-tweak-warn", t("tweakUnused", { var: tweak.var })));
+    return row;
+  }
+
+  function renderTweakButtons(): void {
+    const tweaks = declaredTweaks();
+    const changed = Object.keys(prune(tweaks, tweakValues)).length > 0;
+    const running = agentStatus === "running" || agentStatus === "initializing";
+    resetButton.disabled = !changed;
+    applyButton.disabled = !changed || running;
+    tweakActions.hidden = tweaks.length === 0;
+    suggestButton.disabled = !slug || !design?.manifest || running;
+    tweakHint.textContent = running ? t("agentBusy") : tweaks.length ? t("tweaksHint") : "";
+    tweaksTab.textContent = tweaks.length ? `${t("tweaks")} · ${tweaks.length}` : t("tweaks");
+  }
+
+  /** Rebuilds the panel when the tweaks or their values changed; a control being dragged is left alone. */
+  function renderTweaks(force = false): void {
+    const tweaks = declaredTweaks();
+    const signature = JSON.stringify([tweaks, tweakValues, design?.artboards.map((artboard) => artboard.version)]);
+    if (force || signature !== tweaksRendered) {
+      tweaksRendered = signature;
+      tweakList.innerHTML = "";
+      if (tweaks.length === 0) tweakList.append(el("div", "dc-side-empty", t("tweaksEmpty")));
+      for (const tweak of tweaks) tweakList.append(tweakRow(tweak));
+    }
+    renderTweakButtons();
+  }
+
+  function setTweak(tweak: Tweak, value: TweakValue): TweakValue | null {
+    const checked = checkValue(tweak, value);
+    if (checked === null) return null;
+    tweakValues = { ...tweakValues, [tweak.id]: checked };
+    // The panel shows this value already; don't rebuild it under the pointer.
+    tweaksRendered = JSON.stringify([declaredTweaks(), tweakValues, design?.artboards.map((artboard) => artboard.version)]);
+    sendTweaks();
+    renderTweakButtons();
+    if (tweakSave) clearTimeout(tweakSave);
+    tweakSave = setTimeout(() => {
+      tweakSave = null;
+      void persistTweaks();
+    }, 400);
+    return checked;
+  }
+
+  /** Saves the values on screen, after earlier saves. */
+  function persistTweaks(): Promise<boolean> {
+    if (tweakSave) {
+      clearTimeout(tweakSave);
+      tweakSave = null;
+    }
+    const wanted = slug;
+    if (!wanted) return Promise.resolve(false);
+    const values = prune(declaredTweaks(), tweakValues);
+    tweaksInFlight++;
+    const run = async (): Promise<boolean> => {
+      try {
+        const result = await api.saveTweaks(wanted, values);
+        if (slug === wanted) {
+          for (const [id, version] of Object.entries(result.versions)) {
+            const board = boards.get(id);
+            if (board) board.selfVersion = version;
+          }
+        }
+        return true;
+      } catch (error) {
+        toast(t("tweaksSaveFailed", { error: describe(error) }));
+        return false;
+      } finally {
+        tweaksInFlight--;
+      }
+    };
+    const next = tweakSaving.then(run, run);
+    tweakSaving = next.then(() => undefined);
+    return next;
+  }
+
+  async function resetTweaks(): Promise<void> {
+    tweakValues = {};
+    sendTweaks();
+    renderTweaks(true);
+    await persistTweaks();
+  }
+
+  /** The page's CSS is the agent's, so writing values into the design is the agent's job. */
+  async function applyTweaks(): Promise<void> {
+    if (!slug || !design?.manifest) return;
+    applyButton.disabled = true;
+    try {
+      await persistTweaks();
+      await api.sendToAgent(applyTweaksPrompt(slug, design.manifest, tweakValues));
+      toast(t("tweaksApplying"));
+    } catch (error) {
+      fail(error);
+    } finally {
+      renderTweakButtons();
+    }
+  }
+
+  async function suggestTweaks(): Promise<void> {
+    if (!slug) return;
+    suggestButton.disabled = true;
+    try {
+      await api.sendToAgent(tweaksPrompt(slug, design?.manifest ?? null));
+      toast(t("tweaksAsked"));
+    } catch (error) {
+      fail(error);
+    } finally {
+      renderTweakButtons();
+    }
   }
 
   // ---- Designs -----------------------------------------------------------------------------
@@ -828,6 +1310,9 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
     options.onSlugChange(next);
     design = null;
     comments = [];
+    tweakValues = {};
+    sentVars.clear();
+    tweaksRendered = "";
     clearBoards();
     userMoved = false;
     renderPicker();
@@ -844,10 +1329,14 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
       if (destroyed || slug !== wanted) return;
       design = next;
       comments = next.comments;
+      // Values the user is still changing win over the saved ones.
+      if (!tweakSave && tweaksInFlight === 0) tweakValues = next.tweakValues;
       showBanner(next.error);
       if (next.manifest) syncBoards(next);
       else clearBoards();
       refreshComments();
+      renderTweaks();
+      sendTweaks();
     } catch (error) {
       if (slug === wanted) showBanner(describe(error));
     }
@@ -887,7 +1376,7 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
     ticking = true;
     try {
       if (tickCount++ % 3 === 0) await loadList();
-      if (slug && design && !popoverEditing()) {
+      if (slug && design && !popoverEditing() && ![...boards.values()].some((board) => board.editing)) {
         const version = await api.getDesignVersion(slug);
         if (!destroyed && version !== design.version) await loadDesign();
       }
@@ -925,6 +1414,7 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
         post(board, { type: "mode", mode });
         post(board, { type: "guides", on: guides });
         post(board, { type: "zoom", zoom: view.zoom });
+        sendTweaks(board);
         sendPins();
         resize(board, message.height);
         break;
@@ -945,6 +1435,27 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
       case "key":
         handleKey(message.key, message.meta, message.shift);
         break;
+      case "moved":
+        if (mode === "move") queueMove(board, message.dcId, message.before, message.after);
+        break;
+      case "text-edited":
+        if (mode === "move") void textEdited(board, message.target, message.before, message.after);
+        break;
+      case "editing":
+        board.editing = message.on;
+        break;
+      case "uneditable": {
+        const now = Date.now();
+        if (now - unmovableToastAt > 3000) toast(t(message.reason === "svg" ? "notEditableSvg" : "notEditable"));
+        unmovableToastAt = now;
+        break;
+      }
+      case "unmovable": {
+        const now = Date.now();
+        if (now - unmovableToastAt > 3000) toast(t(message.reason === "unit" ? "notMovableUnit" : "notMovable"));
+        unmovableToastAt = now;
+        break;
+      }
       case "navigate": {
         const target = design?.artboards.find((artboard) => artboard.file === message.file);
         if (target) focusBoard(target.id);
@@ -977,9 +1488,9 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
   let drag: { x: number; y: number; view: View; pointer: number } | null = null;
   viewport.addEventListener("pointerdown", (event) => {
     const onBackground = event.target === viewport || event.target === world;
-    if (!(onBackground || spaceHeld || event.button === 1)) return;
+    if (!(onBackground || spaceHeld || mode === "hand" || event.button === 1)) return;
     if (event.button !== 0 && event.button !== 1) return;
-    if (popover && onBackground && !spaceHeld) closePopover();
+    if (popover && onBackground && !spaceHeld && mode !== "hand") closePopover();
     drag = { x: event.clientX, y: event.clientY, view, pointer: event.pointerId };
     viewport.setPointerCapture(event.pointerId);
     viewport.classList.add("dc-grabbing");
@@ -990,7 +1501,7 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
   // The canvas only hears the pointer when it is not over an artboard.
   let hoverClearedAt = 0;
   root.addEventListener("pointermove", () => {
-    if (mode !== "comment") return;
+    if (mode !== "comment" && mode !== "move") return;
     const now = Date.now();
     if (now - hoverClearedAt < 200) return;
     hoverClearedAt = now;
@@ -1004,7 +1515,7 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
     if (!drag || event.pointerId !== drag.pointer) return;
     drag = null;
     viewport.classList.remove("dc-grabbing");
-    if (!spaceHeld) world.classList.remove("dc-panning");
+    if (!spaceHeld && mode !== "hand") world.classList.remove("dc-panning");
   };
   viewport.addEventListener("pointerup", endDrag);
   viewport.addEventListener("pointercancel", endDrag);
@@ -1027,6 +1538,7 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
   root.addEventListener("keyup", (event) => {
     if (event.key !== " ") return;
     spaceHeld = false;
+    if (mode === "hand") return;
     viewport.classList.remove("dc-grab");
     if (!drag) world.classList.remove("dc-panning");
   });
@@ -1043,10 +1555,10 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
   });
   resizeObserver.observe(viewport);
 
-  setMode("browse");
+  setMode("move");
   // Focus the canvas so its shortcuts work right away; the chat keeps its own focus when shown beside it.
   if (!doc.activeElement || doc.activeElement === doc.body) root.focus({ preventScroll: true });
-  setSideOpen(host.clientWidth >= 900);
+  setSide(host.clientWidth >= 900 ? "comments" : null);
   renderSide();
   applyView();
   void tick();
@@ -1070,6 +1582,7 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
     },
     destroy() {
       destroyed = true;
+      for (const key of [...pendingMoves.keys()]) void flush(key);
       clearInterval(timer);
       if (toastTimer) clearTimeout(toastTimer);
       resizeObserver.disconnect();

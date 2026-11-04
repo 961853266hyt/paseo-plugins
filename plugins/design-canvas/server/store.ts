@@ -5,6 +5,7 @@ import {
   CANVAS_FILE,
   COMMENTS_FILE,
   type Anchor,
+  type Artboard,
   type Comment,
   type CommentsFile,
   type CommentStatus,
@@ -14,11 +15,24 @@ import {
   MANIFEST_FILE,
   type Manifest,
   manifestSchema,
+  type MoveStyle,
   README_FILE,
   slugSchema,
+  type TextTarget,
 } from "../shared/design";
+import {
+  prune,
+  renderTweaksCss,
+  type Tweak,
+  TWEAKS_CSS,
+  TWEAKS_FILE,
+  type TweakValues,
+  tweaksFileSchema,
+  usesVariable,
+} from "../shared/tweaks";
 import type { ArtboardView, DesignSummary, DesignView } from "../shared/rpc";
 import { DESIGN_GUIDE } from "./guide";
+import { findByDcId, replaceText, setInlineStyle } from "./html-patch";
 import { inlineHtml } from "./inline";
 import { designDir, designRoot, resolveInside } from "./paths";
 
@@ -72,13 +86,7 @@ export async function isInitialized(root: string): Promise<boolean> {
 export async function initCanvas(root: string): Promise<boolean> {
   const dir = designRoot(root);
   await mkdir(dir, { recursive: true });
-  const readme = path.join(dir, README_FILE);
-  try {
-    await stat(readme);
-  } catch (error) {
-    if (!isMissing(error)) throw error;
-    await writeFileAtomic(readme, DESIGN_GUIDE);
-  }
+  await refreshGuide(root);
   const marker = path.join(dir, CANVAS_FILE);
   try {
     await stat(marker);
@@ -88,6 +96,22 @@ export async function initCanvas(root: string): Promise<boolean> {
     await writeFileAtomic(marker, `${JSON.stringify({ version: 1 }, null, 2)}\n`);
     return true;
   }
+}
+
+/** How every version of the guide starts, so an older copy of it can be told from a file the user wrote. */
+const GUIDE_START = "# Designs\n\nThis folder holds designs shown on the Design canvas in Paseo.";
+
+/** Writes design/README.md when it is missing or an older version of the guide; a README of the user's stays. */
+export async function refreshGuide(root: string): Promise<void> {
+  const readme = path.join(designRoot(root), README_FILE);
+  let current: string | null = null;
+  try {
+    current = await readFile(readme, "utf8");
+  } catch (error) {
+    if (!isMissing(error)) throw error;
+  }
+  if (current === DESIGN_GUIDE || (current !== null && !current.startsWith(GUIDE_START))) return;
+  await writeFileAtomic(readme, DESIGN_GUIDE);
 }
 
 export type ManifestRead = { manifest: Manifest; error: null } | { manifest: null; error: string };
@@ -355,20 +379,170 @@ export async function viewDesign(root: string, slug: string): Promise<DesignView
     commentsError = describe(error);
   }
   if (!read.manifest) {
-    return { slug, manifest: null, error: read.error, artboards: [], comments, version };
+    return { slug, manifest: null, error: read.error, artboards: [], comments, tweakValues: {}, version };
   }
-  const allowedRoot = designRoot(root);
-  const artboards = await Promise.all(
-    read.manifest.artboards.map(async (artboard): Promise<ArtboardView> => {
-      try {
-        const file = await resolveInside(dir, dir, artboard.file);
-        const { html, files } = await inlineHtml(await readFile(file, "utf8"), file, allowedRoot);
-        const keys = await Promise.all([file, ...files].map(statKey));
-        return { ...artboard, html, error: null, version: hash(keys) };
-      } catch (error) {
-        return { ...artboard, html: null, error: isMissing(error) ? `${artboard.file} is missing` : describe(error), version: "missing" };
-      }
-    }),
-  );
-  return { slug, manifest: read.manifest, error: commentsError, artboards, comments, version };
+  const artboards = await Promise.all(read.manifest.artboards.map((artboard) => renderArtboard(root, slug, artboard)));
+  const tweakValues = prune(read.manifest.tweaks ?? [], await readTweakValues(root, slug).catch(() => ({})));
+  return { slug, manifest: read.manifest, error: commentsError, artboards, comments, tweakValues, version };
+}
+
+function contentHash(text: string): string {
+  return createHash("sha1").update(text).digest("hex").slice(0, 16);
+}
+
+/** One artboard as the canvas shows it: the page with its local files inlined. */
+async function renderArtboard(root: string, slug: string, artboard: Artboard): Promise<ArtboardView> {
+  const dir = designDir(root, slug);
+  try {
+    const file = await resolveInside(dir, dir, artboard.file);
+    const source = await readFile(file, "utf8");
+    const { html, files } = await inlineHtml(source, file, designRoot(root));
+    const keys = await Promise.all([file, ...files].map(statKey));
+    return { ...artboard, html, error: null, version: hash(keys), source: contentHash(source) };
+  } catch (error) {
+    const message = isMissing(error) ? `${artboard.file} is missing` : describe(error);
+    return { ...artboard, html: null, error: message, version: "missing", source: "missing" };
+  }
+}
+
+/** Thrown when the page changed on disk since the canvas read it, e.g. because the agent edited it. */
+export class ConflictError extends Error {}
+
+/**
+ * Rewrites one artboard's page, after earlier writes to it. The write is refused when the page no
+ * longer matches what the canvas showed (`expected` is its `source` hash).
+ */
+function patchPage(
+  root: string,
+  slug: string,
+  artboardId: string,
+  expected: string,
+  patch: (text: string, artboard: Artboard) => string,
+): Promise<{ source: string; version: string }> {
+  const dir = designDir(root, slug);
+  return serialize(path.join(dir, `#artboard:${artboardId}`), async () => {
+    const read = await readManifest(root, slug);
+    if (!read.manifest) throw new Error(read.error);
+    const artboard = read.manifest.artboards.find((candidate) => candidate.id === artboardId);
+    if (!artboard) throw new Error(`No artboard ${artboardId}`);
+    const file = await resolveInside(dir, dir, artboard.file);
+    const text = await readFile(file, "utf8");
+    if (contentHash(text) !== expected) throw new ConflictError(`${artboard.file} changed on disk`);
+    await writeFileAtomic(file, patch(text, artboard));
+    const view = await renderArtboard(root, slug, artboard);
+    return { source: view.source, version: view.version };
+  });
+}
+
+/** Writes a moved element's position into the inline style of the element with this data-dc-id. */
+export function moveElement(
+  root: string,
+  slug: string,
+  artboardId: string,
+  dcId: string,
+  style: MoveStyle,
+  expected: string,
+): Promise<{ source: string; version: string }> {
+  return patchPage(root, slug, artboardId, expected, (text, artboard) => {
+    const tags = findByDcId(text, dcId);
+    if (tags.length === 0) throw new Error(`No element with data-dc-id="${dcId}" in ${artboard.file}`);
+    if (tags.length > 1) throw new Error(`${tags.length} elements share data-dc-id="${dcId}" in ${artboard.file}`);
+    const properties = Object.fromEntries(Object.entries(style).filter((entry): entry is [string, string] => entry[1] !== undefined));
+    return setInlineStyle(text, tags[0]!, properties);
+  });
+}
+
+/** Replaces one text node's text in the page, if the source still has `before` there. */
+export function editText(
+  root: string,
+  slug: string,
+  artboardId: string,
+  target: TextTarget,
+  before: string,
+  after: string,
+  expected: string,
+): Promise<{ source: string; version: string }> {
+  return patchPage(root, slug, artboardId, expected, (text) => replaceText(text, target, before, after));
+}
+
+/** Pins an artboard where it was dragged, or with null returns it to the automatic layout. */
+export function moveArtboard(
+  root: string,
+  slug: string,
+  artboardId: string,
+  position: { x: number; y: number } | null,
+): Promise<void> {
+  return serialize(path.join(designDir(root, slug), MANIFEST_FILE), async () => {
+    const read = await readManifest(root, slug);
+    if (!read.manifest) throw new Error(read.error);
+    if (!read.manifest.artboards.some((artboard) => artboard.id === artboardId)) throw new Error(`No artboard ${artboardId}`);
+    const artboards = read.manifest.artboards.map((artboard) => {
+      if (artboard.id !== artboardId) return artboard;
+      const { x: _x, y: _y, ...rest } = artboard;
+      return position ? { ...rest, x: Math.round(position.x), y: Math.round(position.y) } : rest;
+    });
+    await writeManifest(root, slug, { ...read.manifest, artboards });
+  });
+}
+
+// ---- Tweaks ------------------------------------------------------------------------------
+
+export async function readTweakValues(root: string, slug: string): Promise<TweakValues> {
+  let text: string;
+  try {
+    text = await readFile(path.join(designDir(root, slug), TWEAKS_FILE), "utf8");
+  } catch (error) {
+    if (isMissing(error)) return {};
+    throw error;
+  }
+  const parsed = tweaksFileSchema.safeParse(JSON.parse(text));
+  if (!parsed.success) throw new Error(`${slug}/${TWEAKS_FILE}: ${formatZodError(parsed.error)}`);
+  return parsed.data.values;
+}
+
+async function writeTweakFiles(root: string, slug: string, tweaks: readonly Tweak[], values: TweakValues): Promise<void> {
+  const dir = designDir(root, slug);
+  const pruned = prune(tweaks, values);
+  await writeFileAtomic(path.join(dir, TWEAKS_FILE), `${JSON.stringify(tweaksFileSchema.parse({ version: 1, values: pruned }), null, 2)}\n`);
+  await writeFileAtomic(path.join(dir, TWEAKS_CSS), renderTweaksCss(tweaks, pruned));
+}
+
+/**
+ * Saves the tweak values and regenerates tweaks.css. Returns each artboard's new version, since a
+ * page that links tweaks.css changes with it.
+ */
+export function saveTweaks(
+  root: string,
+  slug: string,
+  values: TweakValues,
+): Promise<{ values: TweakValues; versions: Record<string, string> }> {
+  return serialize(path.join(designDir(root, slug), MANIFEST_FILE), async () => {
+    const read = await readManifest(root, slug);
+    if (!read.manifest) throw new Error(read.error);
+    const manifest = read.manifest;
+    const saved = prune(manifest.tweaks ?? [], values);
+    await writeTweakFiles(root, slug, manifest.tweaks ?? [], saved);
+    const views = await Promise.all(manifest.artboards.map((artboard) => renderArtboard(root, slug, artboard)));
+    return { values: saved, versions: Object.fromEntries(views.map((view) => [view.id, view.version])) };
+  });
+}
+
+/** Declares a design's tweaks, keeping the values that still fit. Returns the variables no page uses. */
+export function setTweaks(root: string, slug: string, tweaks: Tweak[]): Promise<{ unused: string[] }> {
+  return serialize(path.join(designDir(root, slug), MANIFEST_FILE), async () => {
+    const read = await readManifest(root, slug);
+    if (!read.manifest) throw new Error(read.error);
+    const { tweaks: _old, ...rest } = read.manifest;
+    const manifest: Manifest = tweaks.length ? { ...rest, tweaks } : rest;
+    await writeManifest(root, slug, manifest);
+    await writeTweakFiles(root, slug, tweaks, await readTweakValues(root, slug).catch(() => ({})));
+    return { unused: await unusedVariables(root, slug, manifest) };
+  });
+}
+
+/** Tweak variables that no artboard page (or a stylesheet it pulls in) refers to. */
+export async function unusedVariables(root: string, slug: string, manifest: Manifest): Promise<string[]> {
+  if (!manifest.tweaks?.length) return [];
+  const views = await Promise.all(manifest.artboards.map((artboard) => renderArtboard(root, slug, artboard)));
+  return manifest.tweaks.map((tweak) => tweak.var).filter((name) => !views.some((view) => usesVariable(view.html ?? "", name)));
 }

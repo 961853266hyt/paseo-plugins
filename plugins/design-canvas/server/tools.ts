@@ -13,7 +13,8 @@ import {
   README_FILE,
   slugSchema,
 } from "../shared/design";
-import { formatComment } from "../shared/prompts";
+import { formatComment, formatTweaks } from "../shared/prompts";
+import { TWEAKS_CSS, tweaksListSchema } from "../shared/tweaks";
 import { designDir } from "./paths";
 import * as store from "./store";
 
@@ -128,7 +129,7 @@ export function createDesignTools(now: () => number = Date.now): AgentToolDefini
   const designRead = defineAgentTool({
     name: "design_read",
     title: "Read a design",
-    description: "Read a design's manifest and its open comments, each with the element it points at.",
+    description: "Read a design's manifest, its open comments (each with the element it points at) and the tweak values the user set.",
     input: z.object({
       slug: slugSchema,
       includeResolved: z.boolean().optional().describe("Also list resolved comments"),
@@ -142,7 +143,9 @@ export function createDesignTools(now: () => number = Date.now): AgentToolDefini
       const body = comments.length
         ? `${includeResolved ? "Comments" : "Open comments"}:\n\n${comments.map((comment) => formatComment(comment, read.manifest)).join("\n\n")}`
         : "No open comments.";
-      return text(`${header}\n\n${body}`, { manifest: read.manifest, comments });
+      const values = await store.readTweakValues(agent.cwd, slug).catch(() => ({}));
+      const tweaks = read.manifest.tweaks?.length ? `\n\nTweak values set on the canvas:\n${formatTweaks(read.manifest, values)}` : "";
+      return text(`${header}\n\n${body}${tweaks}`, { manifest: read.manifest, comments, tweakValues: values });
     },
   });
 
@@ -171,5 +174,20 @@ export function createDesignTools(now: () => number = Date.now): AgentToolDefini
     },
   });
 
-  return [designCreate, designList, designRead, designResolve];
+  const designSetTweaks = defineAgentTool({
+    name: "design_set_tweaks",
+    title: "Set a design's tweaks",
+    description: `Declare the controls the canvas shows beside a design: each tweak drives one CSS custom property the pages read (color, range, toggle between two CSS values, or select among several). Replaces the design's whole tweak list; an empty list removes them. Values the user already set are kept when they still fit. Pages should link ${TWEAKS_CSS} last in <head>.`,
+    input: z.object({ slug: slugSchema, tweaks: tweaksListSchema }),
+    async execute({ slug, tweaks }, { agent }) {
+      const read = await store.readManifest(agent.cwd, slug);
+      if (!read.manifest) return failure(read.error);
+      const { unused } = await store.setTweaks(agent.cwd, slug, tweaks);
+      const lines = [tweaks.length ? `Set ${tweaks.length} tweaks on "${slug}". They show in the canvas's Tweaks panel.` : `Removed the tweaks of "${slug}".`];
+      if (unused.length) lines.push(`No page reads ${unused.join(", ")} yet: use var(${unused[0]}) in the CSS, or the control will do nothing.`);
+      return text(lines.join("\n"), { unused });
+    },
+  });
+
+  return [designCreate, designList, designRead, designResolve, designSetTweaks];
 }

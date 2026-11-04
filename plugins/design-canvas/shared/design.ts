@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { tweaksListSchema } from "./tweaks";
 
 /** Everything the plugin reads or writes lives under this folder of the workspace. */
 export const DESIGN_DIR = "design";
@@ -36,6 +37,9 @@ export const artboardSchema = z.object({
   height: z.number().int().min(120).max(8192).optional(),
   /** Variants of one screen share a group and sit side by side in one row. */
   group: z.string().min(1).max(120).optional(),
+  /** Where the user dragged the artboard on the canvas; without these it is laid out automatically. */
+  x: z.number().int().min(-1_000_000).max(1_000_000).optional(),
+  y: z.number().int().min(-1_000_000).max(1_000_000).optional(),
 });
 export type Artboard = z.infer<typeof artboardSchema>;
 
@@ -46,6 +50,8 @@ export const manifestSchema = z
     kind: designKindSchema,
     description: z.string().max(4000).optional(),
     artboards: z.array(artboardSchema).min(1).max(48),
+    /** Controls the canvas shows beside the design, each driving a CSS custom property. */
+    tweaks: tweaksListSchema.optional(),
   })
   .superRefine((manifest, ctx) => {
     const ids = new Set<string>();
@@ -87,6 +93,37 @@ export const anchorSchema = z.object({
   rect: rectSchema,
 });
 export type Anchor = z.infer<typeof anchorSchema>;
+
+const PX = "-?\\d+(?:\\.\\d+)?px";
+
+/**
+ * The inline style a move writes: `translate` for elements in the page's flow, `left` and `top`
+ * for positioned ones. An empty string removes the property.
+ */
+export const moveStyleSchema = z
+  .object({
+    translate: z.string().regex(new RegExp(`^(?:|${PX} ${PX})$`)),
+    left: z.string().regex(new RegExp(`^(?:|${PX})$`)),
+    top: z.string().regex(new RegExp(`^(?:|${PX})$`)),
+  })
+  .partial()
+  .refine((style) => Object.keys(style).length > 0, "Nothing to change");
+export type MoveStyle = z.infer<typeof moveStyleSchema>;
+
+/**
+ * One text node in a page, found the way the browser built it: the nearest element with a
+ * data-dc-id (or <body>), then element children by position, then the text node by position
+ * among that element's text nodes.
+ */
+export const textTargetSchema = z.object({
+  dcId: z.string().min(1).max(120).optional(),
+  path: z.array(z.number().int().min(0).max(100_000)).max(64),
+  index: z.number().int().min(0).max(100_000),
+});
+export type TextTarget = z.infer<typeof textTargetSchema>;
+
+/** Text an edit may write; a page's text node is rarely longer. */
+export const editTextSchema = z.string().max(20_000);
 
 export const commentStatusSchema = z.enum(["pending", "sent", "resolved"]);
 export type CommentStatus = z.infer<typeof commentStatusSchema>;

@@ -1,4 +1,5 @@
 import { SIZE_PRESETS } from "../shared/design";
+import { TWEAKS_CSS, TWEAKS_FILE } from "../shared/tweaks";
 
 const sizes = Object.entries(SIZE_PRESETS)
   .map(([name, size]) => `${name} ${size.width}x${size.height}`)
@@ -15,6 +16,7 @@ points at elements and writes comments, and asks you to revise.
 - \`design/<slug>/design.json\`: the design's manifest.
 - \`design/<slug>/<artboard>.html\`: one self-contained HTML page per artboard.
 - \`design/<slug>/comments.json\`: the user's comments, written by the canvas. Only mark comments resolved (below).
+- \`design/<slug>/${TWEAKS_FILE}\` and \`${TWEAKS_CSS}\`: the tweak values the user set, written by the canvas. Don't edit them.
 - \`design/canvas.json\`: marks this workspace as using the canvas.
 
 \`design.json\`:
@@ -48,6 +50,34 @@ points at elements and writes comments, and asks you to revise.
   stay attached to their elements.
 - Put values worth tuning (colors, spacing, radii, font sizes) in CSS custom properties on \`:root\`.
 - When asked for options, add variants as new artboards in one group instead of overwriting.
+- The user can drag elements on the canvas. A move adds \`translate\` (or \`left\`/\`top\` on positioned
+  elements) to that element's inline style, and a dragged artboard gets \`x\` and \`y\` in design.json.
+  Treat these as the user's intent: keep them, or fold them into proper layout when you revise.
+- The user can also fix text on the canvas; it writes straight into the page. Keep their wording.
+
+## Tweaks
+
+Tweaks are controls the canvas shows beside a design, so the user can tune it without a round trip.
+Each one drives a CSS custom property that the pages read. Declare them in design.json (or with the
+design_set_tweaks tool):
+
+\`\`\`json
+"tweaks": [
+  { "id": "accent", "label": "Accent", "type": "color", "var": "--accent", "default": "#d97757" },
+  { "id": "gap", "label": "Card gap", "type": "range", "var": "--card-gap", "min": 8, "max": 48, "step": 4, "unit": "px", "default": 24 },
+  { "id": "badge", "label": "Show badge", "type": "toggle", "var": "--badge-display", "on": "inline-flex", "off": "none", "default": true },
+  { "id": "hero", "label": "Hero", "type": "select", "var": "--hero-align",
+    "options": [{ "label": "Left", "value": "start" }, { "label": "Center", "value": "center" }], "default": "start" }
+]
+\`\`\`
+
+- Set each variable on \`:root\` in the page's CSS with the same value as \`default\`, and use it with
+  \`var(--name)\`. Toggles and selects switch the variable between CSS values, e.g.
+  \`display: var(--badge-display)\` or \`justify-content: var(--hero-align)\`.
+- Link \`<link rel="stylesheet" href="${TWEAKS_CSS}">\` last in each page's \`<head>\`: it holds the user's
+  values, so the page looks the same outside the canvas.
+- When revising, keep the tweaks and the user's values; design_read lists them. Fold a value into
+  the design (and its \`default\`) only when the user asks.
 
 ## Comments
 

@@ -166,6 +166,16 @@ describe("inlining", () => {
     expect(files.map((f) => path.basename(f)).sort()).toEqual(["app.js", "bg.png", "style.css", "tokens.css"]);
   });
 
+  test("a stylesheet that does not exist yet is left empty, and the page changes once it appears", async () => {
+    await makeDesign("pricing", '<!doctype html><head><link rel="stylesheet" href="tweaks.css"></head><p>Hi</p>');
+    const before = (await store.viewDesign(root, "pricing")).artboards[0]!;
+    expect(before.html).toContain('<style data-dc-href="tweaks.css"></style>');
+    await writeFile(path.join(root, "design", "pricing", "tweaks.css"), ":root { --gap: 4px; }");
+    const after = (await store.viewDesign(root, "pricing")).artboards[0]!;
+    expect(after.version).not.toBe(before.version);
+    expect(after.html).toContain("--gap: 4px");
+  });
+
   test("never reads outside design/, even through a symlink", async () => {
     const dir = path.join(root, "design", "pricing");
     await mkdir(dir, { recursive: true });

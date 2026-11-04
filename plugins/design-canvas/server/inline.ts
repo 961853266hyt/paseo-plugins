@@ -31,7 +31,7 @@ const MIME: Record<string, string> = {
 
 export interface InlineResult {
   html: string;
-  /** Every local file the page pulled in, for versioning. */
+  /** Every local file the page refers to, read or still missing, for versioning. */
   files: string[];
 }
 
@@ -86,13 +86,16 @@ export async function inlineHtml(html: string, htmlFile: string, allowedRoot: st
 
   async function load(fromDir: string, reference: string): Promise<{ file: string; bytes: Buffer } | null> {
     if (!isLocalReference(reference)) return null;
+    const relative = decodeURI(stripQuery(reference));
     try {
-      const file = await resolveInside(allowedRoot, fromDir, decodeURI(stripQuery(reference)));
+      const file = await resolveInside(allowedRoot, fromDir, relative);
+      files.add(file);
       const info = await stat(file);
       if (!info.isFile() || info.size > MAX_ASSET_BYTES) return null;
-      files.add(file);
       return { file, bytes: await readFile(file) };
-    } catch {
+    } catch (error) {
+      // A missing file inside the root is still tracked, so the page reloads once it appears (tweaks.css).
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") files.add(path.resolve(fromDir, relative));
       return null;
     }
   }
@@ -141,7 +144,8 @@ export async function inlineHtml(html: string, htmlFile: string, allowedRoot: st
       return tag;
     }
     const loaded = await load(pageDir, href);
-    if (!loaded) return tag;
+    // A local stylesheet that can't be read would only be blocked by the CSP; leave an empty one.
+    if (!loaded) return isLocalReference(href) ? `<style data-dc-href="${escapeAttribute(href)}"></style>` : tag;
     const css = await inlineCss(loaded.bytes.toString("utf8"), path.dirname(loaded.file), 0);
     const media = attribute(tag, "media");
     const mediaAttr = media ? ` media="${escapeAttribute(media)}"` : "";

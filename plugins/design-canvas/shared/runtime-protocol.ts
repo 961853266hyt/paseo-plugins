@@ -1,10 +1,11 @@
 import { z } from "zod";
-import { commentStatusSchema, rectSchema } from "./design";
+import { commentStatusSchema, editTextSchema, moveStyleSchema, rectSchema, type TextTarget, textTargetSchema } from "./design";
 
 /** Every message carries this marker, so the canvas ignores whatever else a design posts. */
 export const PROTOCOL_MARK = "design-canvas/1";
 
-export const canvasModeSchema = z.enum(["browse", "comment"]);
+/** Move selects and drags elements, Hand pans, Comment pins comments, Preview clicks through the prototype. */
+export const canvasModeSchema = z.enum(["move", "hand", "comment", "preview"]);
 export type CanvasMode = z.infer<typeof canvasModeSchema>;
 
 /** What the runtime reports about a picked element; the canvas adds the artboard id. */
@@ -36,6 +37,12 @@ export type ToRuntime =
   /** The canvas zoom, so pins and outlines keep their size on screen. */
   | { mark: typeof PROTOCOL_MARK; type: "zoom"; zoom: number }
   | { mark: typeof PROTOCOL_MARK; type: "clear-selection" }
+  /** Sets inline style on a named element, for undo and redo. */
+  | { mark: typeof PROTOCOL_MARK; type: "set-style"; dcId: string; style: Record<string, string> }
+  /** Sets a text node's text, for undo and redo. */
+  | { mark: typeof PROTOCOL_MARK; type: "set-text"; target: TextTarget; text: string }
+  /** CSS custom properties on the page's root; "" removes one so the page's own value applies. */
+  | { mark: typeof PROTOCOL_MARK; type: "tweaks"; vars: Record<string, string> }
   /** The pointer is over the canvas, not this page; iframes do not always hear it leave. */
   | { mark: typeof PROTOCOL_MARK; type: "clear-hover" };
 
@@ -71,6 +78,16 @@ export const fromRuntimeSchema = z.discriminatedUnion("type", [
     meta: z.boolean(),
     shift: z.boolean(),
   }),
+  /** The Move tool moved a named element; `before` and `after` are its inline values. */
+  z.object({ ...base, type: z.literal("moved"), dcId: z.string().min(1).max(120), before: moveStyleSchema, after: moveStyleSchema }),
+  /** The Move tool was pressed on something it cannot move. */
+  z.object({ ...base, type: z.literal("unmovable"), reason: z.enum(["no-id", "unit"]) }),
+  /** The user finished editing a text node in the Move tool. */
+  z.object({ ...base, type: z.literal("text-edited"), target: textTargetSchema, before: editTextSchema, after: editTextSchema }),
+  /** A double click found no text the canvas can edit. */
+  z.object({ ...base, type: z.literal("uneditable"), reason: z.enum(["no-text", "svg"]) }),
+  /** Text editing started or ended; the canvas holds reloads of the page meanwhile. */
+  z.object({ ...base, type: z.literal("editing"), on: z.boolean() }),
   /** A click on a link to another page of the design, e.g. `checkout.html`. */
   z.object({ ...base, type: z.literal("navigate"), file: z.string().max(200) }),
 ]);

@@ -12,11 +12,15 @@ import { z } from "zod";
 import {
   addComment,
   deleteComment,
+  editText,
   getDesign,
   getDesignVersion,
   initCanvas,
   listDesigns,
   markCommentsSent,
+  moveArtboard,
+  moveElement,
+  saveTweaks,
   updateComment,
 } from "../shared/rpc";
 import { type CanvasApi, type CanvasHandle, mountCanvas, type Translate } from "./canvas";
@@ -41,6 +45,10 @@ export function DesignPanel({ theme, workspaceId, params, tab }: PluginAgentPane
     deleteComment: useRpc(deleteComment),
     markCommentsSent: useRpc(markCommentsSent),
     initCanvas: useRpc(initCanvas),
+    moveElement: useRpc(moveElement),
+    moveArtboard: useRpc(moveArtboard),
+    editText: useRpc(editText),
+    saveTweaks: useRpc(saveTweaks),
   };
   // The canvas mounts once per agent; it reads the latest functions through this ref.
   const latest = useRef({ calls, paseo, setTabState });
@@ -62,6 +70,14 @@ export function DesignPanel({ theme, workspaceId, params, tab }: PluginAgentPane
       },
       markSent: async (slug, ids) => {
         await latest.current.calls.markCommentsSent({ workspaceId, slug, ids });
+      },
+      moveElement: (slug, artboardId, dcId, style, expected) =>
+        latest.current.calls.moveElement({ workspaceId, slug, artboardId, dcId, style, expected }),
+      editText: (slug, artboardId, target, before, after, expected) =>
+        latest.current.calls.editText({ workspaceId, slug, artboardId, target, before, after, expected }),
+      saveTweaks: (slug, values) => latest.current.calls.saveTweaks({ workspaceId, slug, values }),
+      moveArtboard: async (slug, artboardId, position) => {
+        await latest.current.calls.moveArtboard({ workspaceId, slug, artboardId, position });
       },
       sendToAgent: (text) => latest.current.paseo.agents.ref(agentId).send(text),
       startDesign: (brief) =>

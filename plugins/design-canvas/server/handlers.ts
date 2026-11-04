@@ -2,11 +2,15 @@ import type { PluginServerContext } from "@getpaseo/plugin/server";
 import {
   addComment,
   deleteComment,
+  editText,
   getDesign,
   getDesignVersion,
   initCanvas,
   listDesigns,
   markCommentsSent,
+  moveArtboard,
+  moveElement,
+  saveTweaks,
   updateComment,
 } from "../shared/rpc";
 import * as store from "./store";
@@ -21,6 +25,8 @@ export function registerHandlers(server: PluginServerContext, now: () => number 
       store.listVersion(root),
     ]);
     const designs = await Promise.all(slugs.map((slug) => store.summarize(root, slug)));
+    // Agents read the guide; keep it current when the plugin is updated.
+    if (initialized) await store.refreshGuide(root).catch(() => {});
     return { initialized, designs, version };
   });
 
@@ -49,6 +55,23 @@ export function registerHandlers(server: PluginServerContext, now: () => number 
     await store.markSent(await workspaceRoot(paseo, workspaceId), slug, ids, now());
     return {};
   });
+
+  server.handle(moveElement, async ({ workspaceId, slug, artboardId, dcId, style, expected }, { paseo }) =>
+    store.moveElement(await workspaceRoot(paseo, workspaceId), slug, artboardId, dcId, style, expected),
+  );
+
+  server.handle(moveArtboard, async ({ workspaceId, slug, artboardId, position }, { paseo }) => {
+    await store.moveArtboard(await workspaceRoot(paseo, workspaceId), slug, artboardId, position);
+    return {};
+  });
+
+  server.handle(editText, async ({ workspaceId, slug, artboardId, target, before, after, expected }, { paseo }) =>
+    store.editText(await workspaceRoot(paseo, workspaceId), slug, artboardId, target, before, after, expected),
+  );
+
+  server.handle(saveTweaks, async ({ workspaceId, slug, values }, { paseo }) =>
+    store.saveTweaks(await workspaceRoot(paseo, workspaceId), slug, values),
+  );
 
   server.handle(initCanvas, async ({ workspaceId }, { paseo }) => ({
     created: await store.initCanvas(await workspaceRoot(paseo, workspaceId)),

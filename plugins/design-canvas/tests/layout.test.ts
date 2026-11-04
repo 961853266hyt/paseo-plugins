@@ -58,3 +58,16 @@ describe("view", () => {
     expect(stepZoom(0.43, -1)).toBe(0.33);
   });
 });
+
+describe("dragged artboards", () => {
+  test("keep their position and leave the automatic rows alone", () => {
+    const placed = layoutBoards([
+      { id: "a", width: 400, height: 300 },
+      { id: "b", width: 400, height: 300, x: 900, y: -200 },
+      { id: "c", width: 400, height: 300 },
+    ]);
+    const byId = Object.fromEntries(placed.map((rect) => [rect.id, rect]));
+    expect(byId.b).toMatchObject({ x: 900, y: -200 });
+    expect(byId.c).toMatchObject({ x: 400 + COLUMN_GAP, y: LABEL_HEIGHT });
+  });
+});

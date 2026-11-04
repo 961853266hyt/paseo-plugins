@@ -16,6 +16,9 @@ export interface BoardSize {
   /** The fixed height, or the page's measured height. */
   height: number;
   group?: string;
+  /** Where the user dragged it; such boards keep their spot and take no room in the rows. */
+  x?: number;
+  y?: number;
 }
 
 export interface Placed extends Rect {
@@ -28,7 +31,12 @@ export interface Placed extends Rect {
  */
 export function layoutBoards(boards: readonly BoardSize[]): Placed[] {
   const rows = new Map<string, BoardSize[]>();
+  const pinned: Placed[] = [];
   for (const board of boards) {
+    if (board.x !== undefined && board.y !== undefined) {
+      pinned.push({ id: board.id, x: board.x, y: board.y, width: board.width, height: board.height });
+      continue;
+    }
     const key = board.group === undefined ? "\u0000ungrouped" : `group:${board.group}`;
     const row = rows.get(key);
     if (row) row.push(board);
@@ -46,7 +54,7 @@ export function layoutBoards(boards: readonly BoardSize[]): Placed[] {
     }
     y += tallest + ROW_GAP + LABEL_HEIGHT;
   }
-  return placed;
+  return [...placed, ...pinned];
 }
 
 export function bounds(rects: readonly Rect[]): Rect | null {

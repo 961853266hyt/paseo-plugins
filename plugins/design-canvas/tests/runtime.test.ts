@@ -37,6 +37,15 @@ describe("runtime", () => {
   });
 });
 
+describe("comment cursor", () => {
+  test("is a data-URL SVG with its hotspot on the pin's point, and the runtime carries it", async () => {
+    const { COMMENT_CURSOR } = await import("../client/cursors");
+    expect(COMMENT_CURSOR).toMatch(/^url\("data:image\/svg\+xml,[^"]+"\) 3 21, crosshair$/);
+    expect(decodeURIComponent(COMMENT_CURSOR)).toContain("<svg");
+    expect(RUNTIME_SOURCE).toContain(JSON.stringify(COMMENT_CURSOR));
+  });
+});
+
 describe("plugin icon", () => {
   test("the inline mark passes Paseo's SVG rules", async () => {
     const { findSvgIconProblem, PLUGIN_SVG_ICON_MAX_BYTES } = await import("@getpaseo/plugin");
