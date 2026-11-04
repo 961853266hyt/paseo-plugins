@@ -22,3 +22,6 @@ export type IconName = keyof typeof PATHS;
 export function icon(name: IconName): string {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${PATHS[name]}</svg>`;
 }
+
+/** The plugin's mark (a pen nib and a speech bubble), drawn in the surface's colour wherever Paseo shows it. */
+export const PLUGIN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l2.5-7.5L13 6l5 5-6.5 6.5z"/><path d="M4 20l5.5-5.5"/><path d="M15 2.5h5a1.5 1.5 0 0 1 1.5 1.5v3A1.5 1.5 0 0 1 20 8.5h-2l-2 2v-2h-1A1.5 1.5 0 0 1 13.5 7V4A1.5 1.5 0 0 1 15 2.5z"/></svg>`;

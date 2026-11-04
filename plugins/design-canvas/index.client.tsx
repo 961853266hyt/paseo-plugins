@@ -1,6 +1,7 @@
 import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { initCanvas } from "./shared/rpc";
 import { label } from "./client/i18n";
+import { PLUGIN_ICON_SVG } from "./client/icons";
 import { DesignPanel } from "./client/panel";
 import { startDesign } from "./client/start";
 
@@ -11,7 +12,7 @@ export default function contribute(client: PluginClientContext) {
     client.addAgentPanel({
       id: PANEL_ID,
       title: label("panelTitle"),
-      icon: "PenTool",
+      icon: { svg: PLUGIN_ICON_SVG },
       Component: DesignPanel,
     }),
     // `/canvas <brief>` asks this agent for a design; a bare `/canvas` just opens the canvas.
@@ -36,7 +37,7 @@ export default function contribute(client: PluginClientContext) {
     client.addCommandCenterItem({
       id: "open-canvas",
       title: label("openCanvas"),
-      icon: "PenTool",
+      icon: { svg: PLUGIN_ICON_SVG },
       keywords: ["design", "canvas", "prototype", "mockup", "设计", "画布"],
       context: "agent",
       onSelect: ({ openPanel }) => openPanel(PANEL_ID),

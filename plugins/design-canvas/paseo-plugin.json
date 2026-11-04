@@ -7,6 +7,7 @@
       "description": "给 agent 用的设计画布：agent 用 HTML 画设计，你点选元素留评论，agent 接着改。"
     }
   },
+  "icon": "assets/icon.png",
   "media": [
     "assets/canvas.png",
     "assets/comment.png",

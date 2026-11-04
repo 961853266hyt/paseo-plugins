@@ -36,3 +36,12 @@ describe("runtime", () => {
     expect(fromRuntimeSchema.safeParse({ mark: PROTOCOL_MARK, type: "send", text: "rm -rf" }).success).toBe(false);
   });
 });
+
+describe("plugin icon", () => {
+  test("the inline mark passes Paseo's SVG rules", async () => {
+    const { findSvgIconProblem, PLUGIN_SVG_ICON_MAX_BYTES } = await import("@getpaseo/plugin");
+    const { PLUGIN_ICON_SVG } = await import("../client/icons");
+    expect(findSvgIconProblem(PLUGIN_ICON_SVG)).toBeNull();
+    expect(PLUGIN_ICON_SVG.length).toBeLessThan(PLUGIN_SVG_ICON_MAX_BYTES);
+  });
+});
