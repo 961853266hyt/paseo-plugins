@@ -53,7 +53,8 @@ points at elements and writes comments, and asks you to revise.
 
 Comments arrive as a message listing each comment's number, artboard, the element it points at
 (its data-dc-id or CSS path, and a text excerpt) and what the user wants. Make the change, then
-mark the comments resolved with the design_resolve_comments tool, with one line on what you did.
+mark the comments resolved with the design_resolve_comments tool, with one line per comment on
+what you changed for it.
 Without the tool, edit comments.json yourself: set each handled comment's \`status\` to
 \`"resolved"\` and add a \`"resolution"\` with that one line. Change nothing else in the file.
 `;

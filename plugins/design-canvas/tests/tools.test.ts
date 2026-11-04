@@ -68,10 +68,10 @@ describe("design tools", () => {
     expect(read.text).toContain('#1 on Desktop (desktop.html)');
     expect(read.text).toContain('[data-dc-id="cta"]');
     expect(read.text).toContain("Make it green");
-    const resolved = await run("design_resolve_comments", { slug: "pricing", comments: [1], note: "Green now" });
+    const resolved = await run("design_resolve_comments", { slug: "pricing", resolutions: [{ comment: 1, note: "Green now" }] });
     expect(resolved.text).toBe("Resolved #1.");
     expect((await run("design_read", { slug: "pricing" })).text).toContain("No open comments.");
-    const missing = await run("design_resolve_comments", { slug: "pricing", comments: [7], note: "x" });
+    const missing = await run("design_resolve_comments", { slug: "pricing", resolutions: [{ comment: 7, note: "x" }] });
     expect(missing.isError).toBe(true);
   });
 

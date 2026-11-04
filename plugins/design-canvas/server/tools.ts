@@ -149,17 +149,21 @@ export function createDesignTools(now: () => number = Date.now): AgentToolDefini
   const designResolve = defineAgentTool({
     name: "design_resolve_comments",
     title: "Resolve design comments",
-    description: "Mark comments on a design as resolved once you have made the change. The canvas shows your note on each.",
+    description:
+      "Mark comments on a design as resolved once you have made the change, each with one line on what you changed for that comment. The canvas shows each note on its own comment.",
     input: z.object({
       slug: slugSchema,
-      comments: z
-        .array(z.union([z.number().int().min(1), z.string().min(1)]))
-        .min(1)
-        .describe("Comment numbers (e.g. 3) or ids"),
-      note: z.string().min(1).max(2000).describe("One line on what you changed"),
+      resolutions: z
+        .array(
+          z.object({
+            comment: z.union([z.number().int().min(1), z.string().min(1)]).describe("Comment number (e.g. 3) or id"),
+            note: z.string().min(1).max(2000).describe("One line on what you changed for this comment"),
+          }),
+        )
+        .min(1),
     }),
-    async execute({ slug, comments, note }, { agent }) {
-      const result = await store.resolveComments(agent.cwd, slug, comments, note, now());
+    async execute({ slug, resolutions }, { agent }) {
+      const result = await store.resolveComments(agent.cwd, slug, resolutions, now());
       const parts: string[] = [];
       if (result.resolved.length) parts.push(`Resolved ${result.resolved.map((n) => `#${n}`).join(", ")}.`);
       if (result.unknown.length) parts.push(`No such comments: ${result.unknown.join(", ")}.`);

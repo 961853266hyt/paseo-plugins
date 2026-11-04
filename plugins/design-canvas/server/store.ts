@@ -249,19 +249,25 @@ export interface Resolution {
   unknown: string[];
 }
 
-/** Marks comments resolved by id or by their pin number. */
+export interface ResolveRequest {
+  /** The pin number (3, "#3") or the comment id. */
+  comment: string | number;
+  /** What changed for this comment; the canvas shows it on the comment. */
+  note?: string;
+}
+
+/** Marks comments resolved, each with its own note. */
 export function resolveComments(
   root: string,
   slug: string,
-  refs: readonly (string | number)[],
-  note: string | undefined,
+  requests: readonly ResolveRequest[],
   now: number,
 ): Promise<Resolution> {
   return updateComments(root, slug, (file) => {
     const resolved: number[] = [];
     const unknown: string[] = [];
     const comments = [...file.comments];
-    for (const ref of refs) {
+    for (const { comment: ref, note } of requests) {
       const index = comments.findIndex((comment) =>
         typeof ref === "number" ? comment.number === ref : comment.id === ref || `#${comment.number}` === ref,
       );

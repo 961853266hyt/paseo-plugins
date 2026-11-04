@@ -32,7 +32,7 @@ export function commentsPrompt(slug: string, manifest: Manifest | null, comments
     "",
     comments.map((comment) => formatComment(comment, manifest)).join("\n\n"),
     "",
-    `Keep existing data-dc-id attributes. When done, call design_resolve_comments for "${slug}" with the numbers you handled and one line on what you changed. Without that tool, mark them resolved in ${DESIGN_DIR}/${slug}/comments.json as ${DESIGN_DIR}/README.md describes.`,
+    `Keep existing data-dc-id attributes. When done, call design_resolve_comments for "${slug}" with each comment you handled and one line on what you changed for it. Without that tool, mark them resolved in ${DESIGN_DIR}/${slug}/comments.json as ${DESIGN_DIR}/README.md describes.`,
   ].join("\n");
 }
 

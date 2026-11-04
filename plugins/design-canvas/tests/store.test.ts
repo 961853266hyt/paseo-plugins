@@ -97,7 +97,7 @@ describe("comments", () => {
     const second = await store.addComment(root, "pricing", "Blue", anchor, 2);
     expect([first.number, second.number]).toEqual([1, 2]);
     await store.markSent(root, "pricing", [first.id], 3);
-    const resolution = await store.resolveComments(root, "pricing", [1, "#9"], "Made it bigger", 4);
+    const resolution = await store.resolveComments(root, "pricing", [{ comment: 1, note: "Made it bigger" }, { comment: "#9" }], 4);
     expect(resolution).toEqual({ resolved: [1], unknown: ["#9"] });
     const file = await store.readComments(root, "pricing");
     expect(file.comments.map((comment) => comment.status)).toEqual(["resolved", "pending"]);
@@ -110,7 +110,7 @@ describe("comments", () => {
     await store.deleteComment(root, "pricing", first.id);
     const second = await store.addComment(root, "pricing", "Two", anchor, 2);
     expect(second.number).toBe(2);
-    await store.resolveComments(root, "pricing", [second.id], "Done", 3);
+    await store.resolveComments(root, "pricing", [{ comment: second.id, note: "Done" }], 3);
     const reopened = await store.editComment(root, "pricing", second.id, { status: "pending" }, 4);
     expect(reopened.resolution).toBeUndefined();
     expect(reopened.resolvedAt).toBeUndefined();
