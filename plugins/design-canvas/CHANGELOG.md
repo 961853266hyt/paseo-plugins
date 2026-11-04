@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1
+
+- The overviews now say how a design's own code can still reach the network (by navigating its
+  frame, or with markup before `<head>`), ask you to open only designs you trust, and describe
+  more precisely which paths the plugin refuses.
+
 ## 0.1.0
 
 First release.

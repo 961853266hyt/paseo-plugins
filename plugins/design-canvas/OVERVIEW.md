@@ -38,11 +38,18 @@ Everything lives under `design/` in the workspace:
 
 ## What it reads and sends
 
-The plugin reads and writes only files under `design/`, and refuses paths or links that lead outside it. Each artboard runs in a sandboxed frame with no access to Paseo and a policy that blocks every network request, so a design's scripts can run but reach nothing. Local assets are inlined before the page is shown. The plugin sends a message to the agent only when you start a design or press **Send to the agent**; it has no server of its own.
+The plugin reads and writes files under `design/` only. When it inlines a page's local CSS, images, fonts and scripts, it refuses references, symlinks included, that lead outside `design/`; a design folder that is itself a symlink is followed. The plugin sends a message to the agent only when you start a design or press **Send to the agent**; it has no server of its own.
+
+Each artboard runs in a sandboxed frame with no access to Paseo, and a content security policy stops the page from loading fonts, images, scripts or data from the network. That policy does not make a design fully offline. A design's own code can still reach the network in two ways:
+
+- A script can navigate its frame to another web address and send whatever it puts in that address. The policy cannot stop a page from navigating itself.
+- Markup placed before the page's `<head>` tag runs before the policy takes effect, so it can load from the network.
+
+Open only designs you trust, such as ones your own agents wrote, and read a design's HTML before you open one from someone else.
 
 ## Limits
 
 - This first version has comments only. Editing text in place, dragging elements, and tweak sliders are planned.
-- Designs cannot load anything from the network: fonts, images and scripts from a CDN do not appear. Put them in the workspace.
+- Fonts, images and scripts from a CDN do not appear, because the policy blocks them. Put them in the workspace.
 - After you reload or update the plugin, an agent gets its design tools back the next time its session opens.
 - Comments point at elements by `data-dc-id`, then by position in the page. When the agent rebuilds a page without its ids, a pin falls back to where the element was.

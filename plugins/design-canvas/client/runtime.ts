@@ -330,7 +330,10 @@ export const RUNTIME_SOURCE = String.raw`(function () {
   else start();
 })();`;
 
-/** Blocks every request: designs may use inline and data: resources only. */
+/**
+ * Blocks loading from the network: designs may use inline and data: resources only. It does not stop
+ * a page from navigating itself, and markup before <head> runs before it; the overviews say so.
+ */
 export const DESIGN_CSP = [
   "default-src 'none'",
   "script-src 'unsafe-inline' 'unsafe-eval'",
