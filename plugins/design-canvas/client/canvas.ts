@@ -474,7 +474,7 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
         const head = el("div", "dc-item-head");
         const artboard = design?.artboards.find((candidate) => candidate.id === comment.anchor.artboardId);
         head.append(el("span", `dc-num ${comment.status}`, String(comment.number)), el("span", "", artboard?.title ?? comment.anchor.artboardId));
-        const meta = el("div", "dc-item-meta", comment.anchor.text || `<${comment.anchor.tag}>`);
+        const meta = el("div", "dc-item-meta", comment.anchor.text || comment.anchor.dcId || `<${comment.anchor.tag}>`);
         item.append(head, el("div", "dc-item-body", comment.body), meta);
         if (comment.resolution) item.append(el("div", "dc-item-meta", `✓ ${comment.resolution}`));
         item.addEventListener("click", () => revealComment(comment.id));

@@ -170,7 +170,8 @@ export const RUNTIME_SOURCE = String.raw`(function () {
     place(hoverBox, mode === "comment" && hovered && hovered.isConnected ? pageRect(hovered) : null, 1.5);
     place(pickBox, picked && picked.isConnected ? pageRect(picked) : null, 2);
     while (layer.firstChild) layer.removeChild(layer.firstChild);
-    var maxX = Math.max(document.documentElement.scrollWidth, window.innerWidth);
+    // The visible width: a spinning or overflowing element must not push pins off the artboard
+    var maxX = document.documentElement.clientWidth || window.innerWidth;
     pins.forEach(function (pin) {
       var el = find(pin);
       var rect = el ? pageRect(el) : pin.rect;
