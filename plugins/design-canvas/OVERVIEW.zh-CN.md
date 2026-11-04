@@ -1,4 +1,4 @@
-设计画布把类似 [Claude Design](https://www.anthropic.com/news/claude-design-anthropic-labs) 的工作方式带进 Paseo：agent 用 HTML 画出设计画板，你并排查看，点中某个元素说要怎么改，agent 接着改。设计就是工作区里的文件，所以画设计的 agent 也能直接把它实现出来。
+设计画布给 Paseo 里的 agent 一块画设计的地方：agent 用 HTML 画出设计画板，你并排查看，点中某个元素说要怎么改，agent 接着改。设计就是工作区里的文件，所以画设计的 agent 也能直接把它实现出来。
 
 在命令中心选**打开设计画布**，或者在聊天里输入 `/canvas`，就能打开 agent 的**设计**标签页。还没有设计时，写下想要什么，点**交给 agent**；在聊天里输入 `/canvas <要设计什么>` 效果一样。agent 会用设计工具建好设计并逐个画出画板，画布会随着它写文件实时显示。
 
@@ -9,9 +9,11 @@
 - **评论**（C）下会高亮鼠标下的元素。单击选中 agent 命名过的最近元素，Alt+单击选中精确的元素。写下要改什么，按 Ctrl/Cmd+Enter。
 - 评论会以编号图钉的形式先攒着，点**发送给 agent** 时合成一条消息交给 agent，每条都注明对应的元素。agent 改完会把每条标为已解决，并写一句改了什么；已解决的图钉变成绿色，也可以重新打开。
 
-![两条等待发送的评论](https://raw.githubusercontent.com/961853266hyt/paseo-plugins/main/plugins/design-canvas/assets/canvas.png)
+![同一个设计的三个方案并排，两条评论等待发送](https://raw.githubusercontent.com/961853266hyt/paseo-plugins/main/plugins/design-canvas/assets/canvas.png)
 
 ![给选中的元素写评论](https://raw.githubusercontent.com/961853266hyt/paseo-plugins/main/plugins/design-canvas/assets/comment.png)
+
+![agent 改完后，每条评论都标为已解决并附上说明](https://raw.githubusercontent.com/961853266hyt/paseo-plugins/main/plugins/design-canvas/assets/resolved.png)
 
 ## 要求
 

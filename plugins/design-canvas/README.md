@@ -3,7 +3,7 @@ OVERVIEW.md, so change both together. -->
 
 # Design canvas for Paseo
 
-A [Paseo](https://paseo.sh) plugin that brings a Claude Design-style canvas to your agents.
+A [Paseo](https://paseo.sh) plugin that gives your agents a design canvas.
 Your agent draws designs as HTML artboards, you look at them side by side, point at an element and say what should change, and the agent revises. The designs are files in your workspace, so the agent that drew them can build them too.
 
 Open the **Design** tab of an agent from the Command Center (**Open the design canvas**) or with `/canvas` in the chat. With no designs yet, describe what you want and press **Ask the agent**; `/canvas <what to design>` does the same from the chat. The agent sets the design up with its design tools and draws each artboard; the canvas shows it as it is written.
@@ -15,9 +15,11 @@ On the canvas:
 - **Comment** (C) highlights the element under the pointer. A click picks the nearest element the agent named, and Alt+click picks the exact one. Write what should change and press Ctrl/Cmd+Enter.
 - Comments wait as numbered pins until you press **Send to the agent**, which hands them over in one message naming each element. The agent marks each one resolved with a line on what it changed; resolved pins turn green and you can reopen them.
 
-![Two comments waiting to be sent](https://raw.githubusercontent.com/961853266hyt/paseo-plugins/main/plugins/design-canvas/assets/canvas.png)
+![Three variants of a design side by side, with two comments waiting to be sent](https://raw.githubusercontent.com/961853266hyt/paseo-plugins/main/plugins/design-canvas/assets/canvas.png)
 
 ![Writing a comment on a picked element](https://raw.githubusercontent.com/961853266hyt/paseo-plugins/main/plugins/design-canvas/assets/comment.png)
+
+![The agent's revision, with each comment resolved and its note](https://raw.githubusercontent.com/961853266hyt/paseo-plugins/main/plugins/design-canvas/assets/resolved.png)
 
 ## Install
 
