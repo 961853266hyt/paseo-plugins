@@ -3,8 +3,8 @@ OVERVIEW.md, so change both together. -->
 
 # Design canvas for Paseo
 
-A [Paseo](https://paseo.sh) plugin that gives your agents a design canvas.
-Your agent draws designs as HTML artboards, you look at them side by side, point at an element and say what should change, and the agent revises. The designs are files in your workspace, so the agent that drew them can build them too.
+A [Paseo](https://paseo.sh) plugin where humans and agents design together.
+Your agent draws designs as HTML artboards. You look at them side by side, move elements, fix text, tune values and point at what should change, and the agent revises. The designs are files in your workspace, so the agent that drew them can build them too.
 
 Open the **Design** tab of an agent from the Command Center (**Open the design canvas**) or with `/canvas` in the chat. With no designs yet, describe what you want and press **Ask the agent**; `/canvas <what to design>` does the same from the chat. The agent sets the design up with its design tools and draws each artboard; the canvas shows it as it is written.
 

@@ -30,7 +30,7 @@
     "vitest": "^3.2.4",
     "zod": "^4.4.3"
   },
-  "description": "A design canvas for Paseo agents: they draw HTML designs, you point at elements and comment, and the agent revises.",
+  "description": "Where humans and agents design together, in Paseo.",
   "license": "MIT",
   "repository": {
     "type": "git",
