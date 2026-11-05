@@ -9,9 +9,8 @@
   },
   "icon": "assets/icon.png",
   "media": [
-    "assets/canvas.png",
-    "assets/comment.png",
-    "assets/resolved.png"
+    "assets/demo.mp4",
+    "assets/canvas.png"
   ],
   "requirements": {
     "paseo": ">=0.14.0"

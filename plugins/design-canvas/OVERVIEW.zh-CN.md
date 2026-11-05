@@ -12,12 +12,6 @@
 - 评论会以编号图钉的形式先攒着，点**发送给 agent** 时合成一条消息交给 agent，每条都注明对应的元素。agent 改完会把每条标为已解决，并写一句改了什么；已解决的图钉变成绿色，也可以重新打开。
 - **微调**面板列出 agent 为这个设计声明的控件：颜色、滑块、开关和选项，每个控件对应一个 CSS 变量。拖动时所有画板同步变化，调好的值保存到 `tweaks.css`。**重置**恢复默认值，**写进设计**会请 agent 把当前的值写进设计的 CSS 和默认值，**让 agent 提议微调项**会请 agent 挑出值得调的参数并配置好。
 
-![同一个设计的三个方案并排，两条评论等待发送](https://raw.githubusercontent.com/961853266hyt/paseo-plugins/main/plugins/design-canvas/assets/canvas.png)
-
-![给选中的元素写评论](https://raw.githubusercontent.com/961853266hyt/paseo-plugins/main/plugins/design-canvas/assets/comment.png)
-
-![agent 改完后，每条评论都标为已解决并附上说明](https://raw.githubusercontent.com/961853266hyt/paseo-plugins/main/plugins/design-canvas/assets/resolved.png)
-
 ## 要求
 
 Paseo 0.14 或更高版本，daemon 和 app 都要。画布在桌面版和 Web 版里运行，手机 app 只显示一条提示。

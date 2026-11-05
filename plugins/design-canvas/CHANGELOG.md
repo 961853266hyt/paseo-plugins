@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1
+
+- The plugin page shows a 30-second demo video instead of three screenshots, and the overviews
+  no longer repeat the screenshots the page already shows.
+
 ## 0.2.0
 
 - **Move** (V) selects and drags named elements, with arrow-key nudges, and drags artboards by

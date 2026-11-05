@@ -12,12 +12,6 @@ On the canvas:
 - Comments wait as numbered pins until you press **Send to the agent**, which hands them over in one message naming each element. The agent marks each one resolved with a line on what it changed; resolved pins turn green and you can reopen them.
 - **Tweaks** shows the controls the agent declared for a design: colors, sliders, switches and choices, each driving a CSS variable. Every artboard follows as you drag, and the values are saved to `tweaks.css`. **Reset** goes back to the defaults, **Write into design** asks the agent to put the current values into the design's CSS and defaults, and **Ask the agent for tweaks** has the agent pick the values worth tuning and set them up.
 
-![Three variants of a design side by side, with two comments waiting to be sent](https://raw.githubusercontent.com/961853266hyt/paseo-plugins/main/plugins/design-canvas/assets/canvas.png)
-
-![Writing a comment on a picked element](https://raw.githubusercontent.com/961853266hyt/paseo-plugins/main/plugins/design-canvas/assets/comment.png)
-
-![The agent's revision, with each comment resolved and its note](https://raw.githubusercontent.com/961853266hyt/paseo-plugins/main/plugins/design-canvas/assets/resolved.png)
-
 ## Requirements
 
 Paseo 0.14 or later, daemon and app. The canvas runs in the desktop and web apps; the phone apps show a notice.
