@@ -86,7 +86,6 @@ export const CANVAS_CSS = `
 .dc-btn.dc-mini-danger:hover:not(:disabled) { background: var(--dc-danger); color: #fff; filter: brightness(1.08); }
 .dc-menu-sep { height: 1px; margin: 4px 8px; background: var(--dc-border); }
 .dc-menu-new { color: var(--dc-fg); }
-.dc-menu-new:hover { background: var(--dc-surface2); }
 .dc-btn.dc-danger { background: var(--dc-danger); color: #fff; }
 .dc-btn.dc-danger:hover:not(:disabled) { background: var(--dc-danger); filter: brightness(1.08); }
 .dc-board-label .dc-count { display: inline-grid; place-items: center; min-width: 17px; height: 17px; padding: 0 5px; border-radius: 9px;

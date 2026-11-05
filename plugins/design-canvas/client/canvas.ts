@@ -1478,7 +1478,10 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
       closeMenu();
       openNewDesign();
     });
-    menu.append(add);
+    // In a row like the designs', so its hover spans the same width.
+    const row = el("div", "dc-menu-item");
+    row.append(add);
+    menu.append(row);
   }
 
   async function renameFromMenu(summary: DesignSummary, title: string): Promise<void> {
