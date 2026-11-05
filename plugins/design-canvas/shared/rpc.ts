@@ -136,6 +136,20 @@ export const moveArtboard = defineRpc({
   output: z.object({}),
 });
 
+/** Renames a design: its title in design.json, not its folder. */
+export const renameDesign = defineRpc({
+  name: "rename_design",
+  input: designInput.extend({ title: z.string().trim().min(1).max(200) }),
+  output: z.object({ title: z.string() }),
+});
+
+/** Moves a design to design/.trash/, from where it can be moved back by hand. */
+export const deleteDesign = defineRpc({
+  name: "delete_design",
+  input: designInput,
+  output: z.object({ trashedTo: z.string() }),
+});
+
 /** Replaces one text node's text in its page, if the page is still the one the canvas showed. */
 export const editText = defineRpc({
   name: "edit_text",

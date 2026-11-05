@@ -8,6 +8,8 @@ export const CANVAS_FILE = "canvas.json";
 export const MANIFEST_FILE = "design.json";
 export const COMMENTS_FILE = "comments.json";
 export const README_FILE = "README.md";
+/** Deleted designs are moved here, so a deletion can be undone by moving the folder back. */
+export const TRASH_DIR = ".trash";
 
 /** Artboard sizes in CSS pixels. A design may use any size; these are the presets agents are told about. */
 export const SIZE_PRESETS = {

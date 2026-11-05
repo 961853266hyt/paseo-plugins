@@ -186,3 +186,26 @@ describe("inlining", () => {
     expect(out).not.toContain("secret;");
   });
 });
+
+describe("deleting", () => {
+  test("moves the design to design/.trash/, out of the list, and refuses one that is not there", async () => {
+    await makeDesign("pricing");
+    const { trashedTo } = await store.trashDesign(root, "pricing", Date.UTC(2026, 10, 5, 9, 30, 0));
+    expect(trashedTo).toBe("design/.trash/pricing-2026-11-05T09-30-00Z");
+    expect(await readFile(path.join(root, trashedTo, "desktop.html"), "utf8")).toContain("Hi");
+    expect(await store.listSlugs(root)).toEqual([]);
+    await makeDesign("pricing");
+    expect((await store.trashDesign(root, "pricing", Date.UTC(2026, 10, 5, 9, 30, 0))).trashedTo).toBe("design/.trash/pricing-2026-11-05T09-30-00Z-2");
+    await expect(store.trashDesign(root, "pricing", 0)).rejects.toThrow(/No design pricing/);
+  });
+});
+
+describe("renaming", () => {
+  test("changes the title in design.json and keeps the folder", async () => {
+    await makeDesign("pricing");
+    await store.renameDesign(root, "pricing", "Pricing v2");
+    expect((await store.readManifest(root, "pricing")).manifest?.title).toBe("Pricing v2");
+    expect(await store.listSlugs(root)).toEqual(["pricing"]);
+  });
+});
+

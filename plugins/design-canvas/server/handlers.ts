@@ -2,7 +2,9 @@ import type { PluginServerContext } from "@getpaseo/plugin/server";
 import {
   addComment,
   deleteComment,
+  deleteDesign,
   editText,
+  renameDesign,
   getDesign,
   getDesignVersion,
   initCanvas,
@@ -64,6 +66,14 @@ export function registerHandlers(server: PluginServerContext, now: () => number 
     await store.moveArtboard(await workspaceRoot(paseo, workspaceId), slug, artboardId, position);
     return {};
   });
+
+  server.handle(renameDesign, async ({ workspaceId, slug, title }, { paseo }) =>
+    store.renameDesign(await workspaceRoot(paseo, workspaceId), slug, title),
+  );
+
+  server.handle(deleteDesign, async ({ workspaceId, slug }, { paseo }) =>
+    store.trashDesign(await workspaceRoot(paseo, workspaceId), slug, now()),
+  );
 
   server.handle(editText, async ({ workspaceId, slug, artboardId, target, before, after, expected }, { paseo }) =>
     store.editText(await workspaceRoot(paseo, workspaceId), slug, artboardId, target, before, after, expected),

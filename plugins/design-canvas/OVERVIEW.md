@@ -4,13 +4,14 @@ Open the **Design** tab of an agent from the Command Center (**Open the design c
 
 On the canvas:
 
+- Switch designs from the menu at the top left. Hover a design there to rename or delete it; a deleted design's folder moves to `design/.trash/`, from where you can move it back.
 - Artboards sit side by side, variants of one screen in one row. Scroll to pan, Ctrl/Cmd+scroll or the buttons to zoom, Ctrl/Cmd+0 to fit, Shift+G for an 8 px layout grid.
 - **Move** (V) selects the nearest element the agent named and drags it; the arrow keys nudge it 1 px, 10 px with Shift. Drag an artboard by its title to move it. Double-click text (or press Enter on a selected element) to edit it in place: Enter keeps it, Esc puts it back. Moves and text are saved into the design's HTML and `design.json`, and Ctrl/Cmd+Z undoes them (Ctrl/Cmd+Shift+Z redoes).
 - **Hand** (H) pans with a drag anywhere, over the artboards too. Hold Space for it in any tool.
 - **Preview** (P) lets you click through a prototype. Links to another artboard's page jump to it.
 - **Comment** (C) highlights the element under the pointer. A click picks the nearest element the agent named, and Alt+click picks the exact one. Write what should change and press Ctrl/Cmd+Enter.
 - Comments wait as numbered pins until you press **Send to the agent**, which hands them over in one message naming each element. The agent marks each one resolved with a line on what it changed; resolved pins turn green and you can reopen them.
-- **Tweaks** shows the controls the agent declared for a design: colors, sliders, switches and choices, each driving a CSS variable. Every artboard follows as you drag, and the values are saved to `tweaks.css`. **Reset** goes back to the defaults, **Write into design** asks the agent to put the current values into the design's CSS and defaults, and **Ask the agent for tweaks** has the agent pick the values worth tuning and set them up.
+- **Tweaks** shows the controls the agent declared for a design: colors, sliders, switches and choices, each driving a CSS variable. Every artboard follows as you drag, and the values are saved to `tweaks.css`. Hover a tweak to see what it drives: its elements are outlined on every artboard, the rest fades, and each tweak says how many elements on how many artboards it reaches. Hover an element on an artboard to light up the tweaks that drive it. **Reset** goes back to the defaults, **Write into design** asks the agent to put the current values into the design's CSS and defaults, and **Ask the agent for tweaks** has the agent pick the values worth tuning and set them up.
 
 ## Requirements
 

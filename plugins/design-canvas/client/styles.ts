@@ -46,6 +46,52 @@ export const CANVAS_CSS = `
 .dc-btn[data-tip]:hover::after, .dc-btn[data-tip]:focus-visible::after { opacity: 1; transition-delay: 0.4s; }
 .dc-popover .dc-btn[data-tip]::after { left: auto; right: 0; transform: none; }
 .dc-btn svg { width: 15px; height: 15px; flex: none; }
+.dc-picker { display: inline-flex; align-items: center; gap: 6px; height: 28px; max-width: 280px; padding: 0 7px 0 10px; border-radius: 6px;
+  border: 1px solid var(--dc-border); background: var(--dc-bg); color: var(--dc-fg); font: inherit; cursor: pointer; }
+.dc-picker:hover, .dc-picker.dc-on { background: var(--dc-surface2); }
+.dc-picker[hidden] { display: none; }
+.dc-picker-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.dc-picker svg { width: 14px; height: 14px; flex: none; color: var(--dc-muted); }
+.dc-menu { position: absolute; z-index: 25; min-width: 260px; max-width: 380px; max-height: 60%; overflow: auto; padding: 4px; border-radius: 10px;
+  background: var(--dc-surface); border: 1px solid var(--dc-border); box-shadow: 0 12px 32px rgba(0,0,0,.18); }
+/* One grid for every row: 4px menu padding, 8px row inset, a 16px icon column, 8px gap, then the name. */
+.dc-menu-item { position: relative; display: flex; align-items: center; height: 32px; border-radius: 6px; }
+.dc-menu-item:hover, .dc-menu-item:focus-within { background: var(--dc-surface2); }
+.dc-menu-pick { flex: 1; min-width: 0; height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 8px; border: 0; border-radius: 6px;
+  background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; outline: none; }
+.dc-menu-pick:focus-visible { box-shadow: inset 0 0 0 1.5px var(--dc-accent); }
+.dc-menu-icon { width: 16px; height: 16px; flex: none; display: grid; place-items: center; color: var(--dc-muted); }
+.dc-current .dc-menu-icon { color: var(--dc-accent); }
+.dc-menu-icon svg { width: 16px; height: 16px; display: block; }
+.dc-menu-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dc-current .dc-menu-title { font-weight: 600; }
+.dc-menu-actions { display: flex; gap: 2px; margin-right: 4px; opacity: 0; }
+.dc-menu-item:hover .dc-menu-actions, .dc-menu-item:focus-within .dc-menu-actions { opacity: 1; }
+.dc-btn.dc-act { width: 24px; height: 24px; color: var(--dc-muted); }
+.dc-btn.dc-act svg { width: 14px; height: 14px; }
+.dc-btn.dc-act:hover:not(:disabled) { background: var(--dc-border); color: var(--dc-fg); }
+.dc-btn.dc-act-danger:hover:not(:disabled) { color: var(--dc-danger); }
+.dc-menu .dc-btn[data-tip]::after { left: auto; right: 0; transform: none; }
+/* Renaming: the field starts where the name was. */
+.dc-menu-item.dc-renaming { gap: 8px; padding: 0 8px; background: var(--dc-surface2); }
+.dc-menu-field { flex: 1; min-width: 0; height: 24px; margin: 0 -6px; padding: 0 5px; border: 1px solid var(--dc-accent); border-radius: 5px;
+  background: var(--dc-bg); color: var(--dc-fg); font: inherit; font-weight: 600; outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dc-accent) 18%, transparent); }
+/* Deleting: the row asks. */
+.dc-menu-item.dc-asking { gap: 8px; padding: 0 4px 0 8px; background: color-mix(in srgb, var(--dc-danger) 10%, var(--dc-surface)); }
+.dc-asking .dc-menu-icon, .dc-asking .dc-menu-title { color: var(--dc-danger); }
+.dc-btn.dc-mini { height: 24px; padding: 0 8px; font-size: 12px; color: var(--dc-muted); }
+.dc-btn.dc-mini:hover:not(:disabled) { background: color-mix(in srgb, var(--dc-fg) 8%, transparent); color: var(--dc-fg); }
+.dc-btn.dc-mini-danger { background: var(--dc-danger); color: #fff; font-weight: 600; }
+.dc-btn.dc-mini-danger:hover:not(:disabled) { background: var(--dc-danger); color: #fff; filter: brightness(1.08); }
+.dc-menu-sep { height: 1px; margin: 4px 8px; background: var(--dc-border); }
+.dc-menu-new { color: var(--dc-fg); }
+.dc-menu-new:hover { background: var(--dc-surface2); }
+.dc-btn.dc-danger { background: var(--dc-danger); color: #fff; }
+.dc-btn.dc-danger:hover:not(:disabled) { background: var(--dc-danger); filter: brightness(1.08); }
+.dc-board-label .dc-count { display: inline-grid; place-items: center; min-width: 17px; height: 17px; padding: 0 5px; border-radius: 9px;
+  background: #0d99ff; color: #fff; font-size: 10.5px; font-weight: 700; line-height: 1; opacity: 0; transform: scale(.6); transition: opacity .14s, transform .14s; }
+.dc-board-label .dc-count.dc-on { opacity: 1; transform: none; }
 .dc-select { height: 28px; max-width: 260px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--dc-border);
   background: var(--dc-bg); color: var(--dc-fg); font: inherit; }
 .dc-zoom { min-width: 48px; text-align: center; font-variant-numeric: tabular-nums; color: var(--dc-muted); }
@@ -106,8 +152,14 @@ export const CANVAS_CSS = `
 .dc-pane[hidden] { display: none; }
 .dc-side-list { flex: 1; overflow: auto; padding: 6px; }
 .dc-side-list.dc-tweaks { padding: 4px 12px; }
-.dc-tweak { padding: 10px 0; border-bottom: 1px solid var(--dc-border); }
-.dc-tweak:last-child { border-bottom: 0; }
+.dc-tweak { position: relative; margin: 0 -8px; padding: 10px 8px; border-radius: 8px; transition: background .12s, box-shadow .12s; }
+.dc-tweak + .dc-tweak::before { content: ""; position: absolute; left: 8px; right: 8px; top: 0; border-top: 1px solid var(--dc-border); }
+.dc-tweak:hover, .dc-tweak.dc-linked { background: var(--dc-bg); box-shadow: 0 0 0 1px var(--dc-border); }
+.dc-tweak.dc-linked { box-shadow: 0 0 0 1.5px #0d99ff; }
+.dc-tweak:hover::before, .dc-tweak:hover + .dc-tweak::before, .dc-tweak.dc-linked::before, .dc-tweak.dc-linked + .dc-tweak::before { opacity: 0; }
+.dc-tweak-uses { display: flex; align-items: center; gap: 6px; margin-top: 7px; font-size: 12px; color: var(--dc-muted); }
+.dc-tweak-uses:empty { display: none; }
+.dc-tweak-uses::before { content: ""; width: 7px; height: 7px; flex: none; border-radius: 2px; border: 1.5px solid #0d99ff; background: rgba(13,153,255,.12); }
 .dc-tweak-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; min-height: 18px; }
 .dc-tweak-name { flex: 1; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dc-tweak.dc-changed .dc-tweak-name::after { content: ""; display: inline-block; width: 6px; height: 6px; margin-left: 6px;

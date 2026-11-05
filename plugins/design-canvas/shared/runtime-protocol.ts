@@ -41,6 +41,10 @@ export type ToRuntime =
   | { mark: typeof PROTOCOL_MARK; type: "set-style"; dcId: string; style: Record<string, string> }
   /** Sets a text node's text, for undo and redo. */
   | { mark: typeof PROTOCOL_MARK; type: "set-text"; target: TextTarget; text: string }
+  /** The Tweaks panel's variables, to count what each drives and to light up tweaks on hover; [] when it is closed. */
+  | { mark: typeof PROTOCOL_MARK; type: "tweak-scan"; names: string[] }
+  /** Outline what this variable drives and fade the rest; null stops. */
+  | { mark: typeof PROTOCOL_MARK; type: "tweak-show"; name: string | null }
   /** CSS custom properties on the page's root; "" removes one so the page's own value applies. */
   | { mark: typeof PROTOCOL_MARK; type: "tweaks"; vars: Record<string, string> }
   /** The pointer is over the canvas, not this page; iframes do not always hear it leave. */
@@ -84,6 +88,10 @@ export const fromRuntimeSchema = z.discriminatedUnion("type", [
   z.object({ ...base, type: z.literal("unmovable"), reason: z.enum(["no-id", "unit"]) }),
   /** The user finished editing a text node in the Move tool. */
   z.object({ ...base, type: z.literal("text-edited"), target: textTargetSchema, before: editTextSchema, after: editTextSchema }),
+  /** How many elements of this page each listed variable drives. */
+  z.object({ ...base, type: z.literal("tweak-uses"), counts: z.record(z.string().max(64), z.number().int().min(0)) }),
+  /** The listed variables that drive the element under the pointer. */
+  z.object({ ...base, type: z.literal("tweak-hover"), names: z.array(z.string().max(64)).max(40) }),
   /** A double click found no text the canvas can edit. */
   z.object({ ...base, type: z.literal("uneditable"), reason: z.enum(["no-text", "svg"]) }),
   /** Text editing started or ended; the canvas holds reloads of the page meanwhile. */

@@ -41,8 +41,6 @@
   "sent": "Sent {{count}} to the agent",
   "newDesignTitle": "New design",
   "emptyTitle": "No designs yet",
-  "newDesignHelp": "Describe what to design. The agent draws it as HTML artboards here; then you point at elements and comment.",
-  "briefPlaceholder": "e.g. A pricing page with three plans, a monthly/yearly switch and an FAQ. Show it on desktop and mobile.",
   "startDesign": "Ask the agent",
   "startedDesign": "Sent to the agent. The design appears here as it is drawn.",
   "noSuchPage": "This design has no artboard for {{file}}",
@@ -66,5 +64,16 @@
   "textConflict": "{{file}} changed on disk, so the text was not saved. The page was reloaded.",
   "textFailed": "Couldn't save the text: {{error}}",
   "applyTweaks": "Write into design",
-  "tweaksApplying": "Sent to the agent. It puts these values into the design's CSS and defaults."
+  "tweaksApplying": "Sent to the agent. It puts these values into the design's CSS and defaults.",
+  "deleteDesign": "Delete design",
+  "deleteDesignTitle": "Delete “{{title}}”?",
+  "deleteConfirm": "Delete",
+  "designDeleted": "Deleted “{{title}}”. It's in {{path}} if you want it back.",
+  "elements_one": "1 element",
+  "elements_other": "{{count}} elements",
+  "artboards_one": "1 artboard",
+  "artboards_other": "{{count}} artboards",
+  "openComments_one": "1 open comment",
+  "openComments_other": "{{count}} open comments",
+  "renameDesign": "Rename"
 }

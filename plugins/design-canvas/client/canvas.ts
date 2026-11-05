@@ -67,6 +67,10 @@ export interface CanvasApi {
   sendToAgent(text: string): Promise<void>;
   /** Sets the workspace up for the canvas and asks the agent for a new design. */
   startDesign(brief: string): Promise<void>;
+  /** Gives a design a new title. */
+  renameDesign(slug: string, title: string): Promise<void>;
+  /** Moves a design to design/.trash/ and returns where it went. */
+  deleteDesign(slug: string): Promise<string>;
 }
 
 export interface CanvasOptions {
@@ -102,6 +106,10 @@ interface Board {
   writing: Promise<void>;
   /** The user is typing in this page, so it must not reload. */
   editing: boolean;
+  /** How many of this page's elements each listed tweak drives, once the page has said. */
+  tweakCounts: Record<string, number> | null;
+  /** On the label: how many elements of this page the hovered tweak drives. */
+  badge: HTMLSpanElement | null;
 }
 
 type UndoEntry =
@@ -162,8 +170,19 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
   applyTheme(root, options.theme);
 
   const toolbar = el("div", "dc-toolbar");
-  const picker = el("select", "dc-select");
+  const picker = el("button", "dc-picker");
+  picker.type = "button";
+  picker.setAttribute("aria-haspopup", "menu");
   picker.setAttribute("aria-label", t("designPicker"));
+  picker.dataset.testid = "design-canvas-picker";
+  const pickerLabel = el("span", "dc-picker-label");
+  picker.append(pickerLabel);
+  picker.insertAdjacentHTML("beforeend", icon("chevron"));
+  picker.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (menu) closeMenu();
+    else openMenu();
+  });
   const tools: Array<[CanvasMode, HTMLButtonElement]> = [
     ["move", button(`${t("toolMove")} (V)`, "pointer", () => setMode("move"), "dc-btn dc-icon")],
     ["hand", button(`${t("toolHand")} (H)`, "hand", () => setMode("hand"), "dc-btn dc-icon")],
@@ -263,6 +282,16 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
   let tweakSaving: Promise<void> = Promise.resolve();
   let tweaksInFlight = 0;
   let tweaksRendered = "";
+  /** The tweak whose elements the artboards are outlining, by its variable. */
+  let tweakShown: string | null = null;
+  let tweakDragging = false;
+  /** The tweaks driving the element under the pointer on an artboard. */
+  let tweakHoverNames: string[] = [];
+  const tweakRows = new Map<string, { row: HTMLElement; uses: HTMLElement; tweak: Tweak }>();
+  let menu: HTMLDivElement | null = null;
+  /** The design whose name is being edited in the menu, and the one asking to be deleted. */
+  let menuRenaming: string | null = null;
+  let menuAsking: string | null = null;
   let popover: { state: Popover; node: HTMLDivElement } | null = null;
   let agentStatus: AgentStatus = null;
   let sending = false;
@@ -405,7 +434,12 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
     const { view: artboard } = board;
     board.label.innerHTML = "";
     const size = artboard.height ? `${artboard.width} × ${artboard.height}` : `${artboard.width}`;
-    board.label.append(el("b", "", artboard.title), el("span", "", size));
+    // The count of what the hovered tweak drives sits by the name, where a long label can't push it off.
+    board.badge = el("span", "dc-count");
+    const n = tweakShown && board.tweakCounts ? board.tweakCounts[tweakShown] ?? 0 : 0;
+    board.badge.textContent = String(n);
+    board.badge.classList.toggle("dc-on", n > 0);
+    board.label.append(el("b", "", artboard.title), board.badge, el("span", "", size));
     if (artboard.group) board.label.append(el("span", "", artboard.group));
   }
 
@@ -452,6 +486,8 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
       selfVersion: null,
       writing: Promise.resolve(),
       editing: false,
+      tweakCounts: null,
+      badge: null,
     };
     label.addEventListener("pointerdown", (event) => startBoardDrag(board, event));
     boardLabel(board);
@@ -793,6 +829,7 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
     tweaksTab.classList.toggle("dc-on", sideTab === "tweaks");
     sideButton.classList.toggle("dc-on", tab === "comments");
     tweaksButton.classList.toggle("dc-on", tab === "tweaks");
+    sendTweakScan();
   }
 
   function toggleSide(tab: "comments" | "tweaks"): void {
@@ -810,7 +847,8 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
     else if (!meta && !shift && key === "c") setMode("comment");
     else if (!meta && !shift && key === "p") setMode("preview");
     else if (key === "Escape") {
-      if (modal) closeModal();
+      if (menu) closeMenu();
+      else if (modal) closeModal();
       else if (popover) closePopover();
       else if (mode === "comment") setMode("move");
       else return false;
@@ -1097,8 +1135,17 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
       select.addEventListener("change", () => change(select.value));
       row.append(select);
     }
-    const used = design?.artboards.some((artboard) => artboard.html !== null && usesVariable(artboard.html, tweak.var));
-    if (!used) row.append(el("div", "dc-tweak-warn", t("tweakUnused", { var: tweak.var })));
+    // What this tweak drives: counted by each page, outlined on hover.
+    const uses = el("div", "dc-tweak-uses");
+    row.append(uses);
+    tweakRows.set(tweak.var, { row, uses, tweak });
+    row.addEventListener("mouseenter", () => showTweak(tweak.var));
+    row.addEventListener("mouseleave", () => {
+      if (!tweakDragging) showTweak(null);
+    });
+    row.addEventListener("pointerdown", (event) => {
+      if ((event.target as HTMLElement).closest("input")) tweakDragging = true;
+    });
     return row;
   }
 
@@ -1121,10 +1168,72 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
     if (force || signature !== tweaksRendered) {
       tweaksRendered = signature;
       tweakList.innerHTML = "";
+      tweakRows.clear();
       if (tweaks.length === 0) tweakList.append(el("div", "dc-side-empty", t("tweaksEmpty")));
       for (const tweak of tweaks) tweakList.append(tweakRow(tweak));
+      renderUses();
     }
     renderTweakButtons();
+  }
+
+  function countText(kind: "elements" | "artboards" | "openComments", n: number): string {
+    return t(`${kind}_${n === 1 ? "one" : "other"}`, { count: String(n) });
+  }
+
+  /** Each tweak's reach, as the pages counted it; before they say, a quick look at their CSS. */
+  function renderUses(): void {
+    for (const { row, uses, tweak } of tweakRows.values()) {
+      const reported = [...boards.values()].filter((board) => board.tweakCounts && tweak.var in board.tweakCounts);
+      let total = 0;
+      let onBoards = 0;
+      for (const board of reported) {
+        const n = board.tweakCounts![tweak.var]!;
+        total += n;
+        if (n > 0) onBoards++;
+      }
+      const unused = reported.length
+        ? total === 0
+        : !design?.artboards.some((artboard) => artboard.html !== null && usesVariable(artboard.html, tweak.var));
+      uses.className = unused ? "dc-tweak-warn" : "dc-tweak-uses";
+      uses.textContent = unused
+        ? t("tweakUnused", { var: tweak.var })
+        : reported.length
+          ? `${countText("elements", total)} · ${countText("artboards", onBoards)}`
+          : "";
+      row.classList.toggle("dc-linked", tweakHoverNames.includes(tweak.var));
+    }
+  }
+
+  function tweaksVisible(): boolean {
+    return !side.hidden && sideTab === "tweaks" && declaredTweaks().length > 0;
+  }
+
+  /** Tells the pages which variables the open panel lists, or [] when it is closed. */
+  function sendTweakScan(board?: Board): void {
+    const names = tweaksVisible() ? declaredTweaks().map((tweak) => tweak.var) : [];
+    if (!names.length) {
+      tweakHoverNames = [];
+      showTweak(null);
+    }
+    if (board) post(board, { type: "tweak-scan", names });
+    else broadcast({ type: "tweak-scan", names });
+  }
+
+  function refreshBadges(): void {
+    for (const board of boards.values()) {
+      if (!board.badge) continue;
+      const n = tweakShown && board.tweakCounts ? board.tweakCounts[tweakShown] ?? 0 : 0;
+      board.badge.textContent = String(n);
+      board.badge.classList.toggle("dc-on", n > 0);
+    }
+  }
+
+  /** Outlines on every artboard what a tweak drives; null clears. */
+  function showTweak(name: string | null): void {
+    if (tweakShown === name) return;
+    tweakShown = name;
+    broadcast({ type: "tweak-show", name });
+    refreshBadges();
   }
 
   function setTweak(tweak: Tweak, value: TweakValue): TweakValue | null {
@@ -1227,15 +1336,204 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
   }
 
   function renderPicker(): void {
-    picker.innerHTML = "";
     const designs = list?.designs ?? [];
-    for (const summary of designs) {
-      const option = el("option", "", summary.error ? `${summary.slug} ⚠` : summary.title);
-      option.value = summary.slug;
-      picker.append(option);
-    }
+    const current = designs.find((summary) => summary.slug === slug);
+    pickerLabel.textContent = current ? (current.error ? `${current.slug} ⚠` : current.title) : "";
     picker.hidden = designs.length === 0;
-    if (slug) picker.value = slug;
+    if (menu) renderMenu();
+  }
+
+  // ---- Design menu -------------------------------------------------------------------------
+  // One row per design, by its name. Hovering a row shows rename and delete; both happen in the row.
+
+  function openMenu(): void {
+    closeMenu();
+    menuRenaming = null;
+    menuAsking = null;
+    menu = el("div", "dc-menu");
+    menu.setAttribute("role", "menu");
+    menu.dataset.testid = "design-canvas-menu";
+    menu.addEventListener("pointerdown", (event) => event.stopPropagation());
+    menu.addEventListener("keydown", menuKey);
+    root.append(menu);
+    renderMenu();
+    const at = picker.getBoundingClientRect();
+    const box = root.getBoundingClientRect();
+    menu.style.left = `${at.left - box.left}px`;
+    menu.style.top = `${at.bottom - box.top + 4}px`;
+    picker.classList.add("dc-on");
+    picker.setAttribute("aria-expanded", "true");
+    (menu.querySelector<HTMLElement>(".dc-current .dc-menu-pick") ?? menu.querySelector<HTMLElement>(".dc-menu-pick"))?.focus();
+  }
+
+  function closeMenu(): void {
+    if (!menu) return;
+    menu.remove();
+    menu = null;
+    menuRenaming = null;
+    menuAsking = null;
+    picker.classList.remove("dc-on");
+    picker.setAttribute("aria-expanded", "false");
+  }
+
+  function titleOf(summary: DesignSummary): string {
+    return summary.error ? summary.slug : summary.title;
+  }
+
+  function menuRow(summary: DesignSummary): HTMLElement {
+    const current = summary.slug === slug;
+    const item = el("div", "dc-menu-item");
+    item.dataset.design = summary.slug;
+    item.classList.toggle("dc-current", current);
+    const mark = el("span", "dc-menu-icon");
+
+    // Deleting asks in the row: the name becomes the question, the actions its answers.
+    if (menuAsking === summary.slug) {
+      item.classList.add("dc-asking");
+      mark.innerHTML = icon("alert");
+      const no = button(t("cancel"), null, () => {
+        menuAsking = null;
+        renderMenu();
+      }, "dc-btn dc-mini");
+      const yes = button(t("deleteConfirm"), null, () => void deleteFromMenu(summary, yes), "dc-btn dc-mini dc-mini-danger");
+      item.append(mark, el("span", "dc-menu-title", t("deleteDesignTitle", { title: titleOf(summary) })), no, yes);
+      setTimeout(() => yes.focus(), 0);
+      return item;
+    }
+
+    if (current) mark.innerHTML = icon("check");
+    if (menuRenaming === summary.slug) {
+      item.classList.add("dc-renaming");
+      const field = el("input", "dc-menu-field");
+      field.value = titleOf(summary);
+      field.setAttribute("aria-label", t("renameDesign"));
+      let done = false;
+      const finish = (keep: boolean) => {
+        if (done) return;
+        done = true;
+        const title = field.value.trim();
+        menuRenaming = null;
+        if (keep && title && title !== titleOf(summary)) void renameFromMenu(summary, title);
+        else renderMenu();
+      };
+      field.addEventListener("keydown", (event) => {
+        event.stopPropagation();
+        if (event.key === "Enter") {
+          event.preventDefault();
+          finish(true);
+        } else if (event.key === "Escape") {
+          event.preventDefault();
+          finish(false);
+          menu?.querySelector<HTMLElement>(`[data-design="${summary.slug}"] .dc-menu-pick`)?.focus();
+        }
+      });
+      field.addEventListener("blur", () => finish(true));
+      item.append(mark, field);
+      setTimeout(() => {
+        field.focus();
+        field.select();
+      }, 0);
+      return item;
+    }
+
+    const pick = el("button", "dc-menu-pick");
+    pick.type = "button";
+    pick.setAttribute("role", "menuitemradio");
+    pick.setAttribute("aria-checked", String(current));
+    pick.append(mark, el("span", "dc-menu-title", titleOf(summary)));
+    pick.addEventListener("click", () => {
+      closeMenu();
+      void selectDesign(summary.slug);
+    });
+    const actions = el("span", "dc-menu-actions");
+    actions.append(
+      button(t("renameDesign"), "edit", () => startRename(summary.slug), "dc-btn dc-icon dc-act"),
+      button(t("deleteDesign"), "trash", () => {
+        menuAsking = summary.slug;
+        renderMenu();
+      }, "dc-btn dc-icon dc-act dc-act-danger"),
+    );
+    item.append(pick, actions);
+    return item;
+  }
+
+  function startRename(target: string): void {
+    menuAsking = null;
+    menuRenaming = target;
+    renderMenu();
+  }
+
+  function renderMenu(): void {
+    if (!menu) return;
+    menu.innerHTML = "";
+    for (const summary of list?.designs ?? []) menu.append(menuRow(summary));
+    menu.append(el("div", "dc-menu-sep"));
+    const add = el("button", "dc-menu-pick dc-menu-new");
+    add.type = "button";
+    add.setAttribute("role", "menuitem");
+    const plus = el("span", "dc-menu-icon");
+    plus.innerHTML = icon("plus");
+    add.append(plus, el("span", "dc-menu-title", t("newDesign")));
+    add.addEventListener("click", () => {
+      closeMenu();
+      openNewDesign();
+    });
+    menu.append(add);
+  }
+
+  async function renameFromMenu(summary: DesignSummary, title: string): Promise<void> {
+    try {
+      await api.renameDesign(summary.slug, title);
+      if (list) list = { ...list, designs: list.designs.map((d) => (d.slug === summary.slug ? { ...d, title } : d)) };
+      renderPicker();
+      await loadList();
+    } catch (error) {
+      fail(error);
+      renderMenu();
+    }
+  }
+
+  async function deleteFromMenu(summary: DesignSummary, confirm: HTMLButtonElement): Promise<void> {
+    if (confirm.disabled) return;
+    confirm.disabled = true;
+    try {
+      const where = await api.deleteDesign(summary.slug);
+      menuAsking = null;
+      toast(t("designDeleted", { title: titleOf(summary), path: where }));
+      if (slug === summary.slug) await selectDesign(null);
+      await loadList();
+      renderMenu();
+    } catch (error) {
+      confirm.disabled = false;
+      fail(error);
+    }
+  }
+
+  function menuKey(event: KeyboardEvent): void {
+    if (!menu) return;
+    event.stopPropagation();
+    if (event.target instanceof win!.HTMLInputElement) return;
+    const items = [...menu.querySelectorAll<HTMLElement>(".dc-menu-pick")];
+    const at = items.indexOf(doc.activeElement as HTMLElement);
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      items[(at + (event.key === "ArrowDown" ? 1 : items.length - 1)) % items.length]?.focus();
+    } else if (event.key === "F2" && at >= 0) {
+      const design = items[at]!.closest<HTMLElement>(".dc-menu-item")?.dataset.design;
+      if (design) {
+        event.preventDefault();
+        startRename(design);
+      }
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      if (menuAsking) {
+        menuAsking = null;
+        renderMenu();
+      } else {
+        closeMenu();
+        picker.focus();
+      }
+    }
   }
 
   function showEmpty(): void {
@@ -1254,9 +1552,8 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
   function newDesignCard(inModal: boolean): HTMLElement {
     const card = el("div", "dc-card");
     card.dataset.testid = "design-canvas-new";
-    card.append(el("h2", "", t(inModal ? "newDesignTitle" : "emptyTitle")), el("p", "", t("newDesignHelp")));
+    card.append(el("h2", "", t(inModal ? "newDesignTitle" : "emptyTitle")));
     const area = el("textarea", "dc-textarea");
-    area.placeholder = t("briefPlaceholder");
     const row = el("div", "dc-row");
     const submit = button(t("startDesign"), "sparkles", () => void go(), "dc-btn dc-primary");
     async function go(): Promise<void> {
@@ -1313,6 +1610,8 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
     tweakValues = {};
     sentVars.clear();
     tweaksRendered = "";
+    tweakShown = null;
+    tweakHoverNames = [];
     clearBoards();
     userMoved = false;
     renderPicker();
@@ -1337,6 +1636,7 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
       refreshComments();
       renderTweaks();
       sendTweaks();
+      sendTweakScan();
     } catch (error) {
       if (slug === wanted) showBanner(describe(error));
     }
@@ -1415,6 +1715,8 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
         post(board, { type: "guides", on: guides });
         post(board, { type: "zoom", zoom: view.zoom });
         sendTweaks(board);
+        sendTweakScan(board);
+        if (tweakShown) post(board, { type: "tweak-show", name: tweakShown });
         sendPins();
         resize(board, message.height);
         break;
@@ -1443,6 +1745,15 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
         break;
       case "editing":
         board.editing = message.on;
+        break;
+      case "tweak-uses":
+        board.tweakCounts = message.counts;
+        renderUses();
+        refreshBadges();
+        break;
+      case "tweak-hover":
+        tweakHoverNames = message.names;
+        renderUses();
         break;
       case "uneditable": {
         const now = Date.now();
@@ -1543,7 +1854,22 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
     if (!drag) world.classList.remove("dc-panning");
   });
 
-  picker.addEventListener("change", () => void selectDesign(picker.value || null));
+  // A press anywhere else, or into an artboard (which takes focus), closes the design menu.
+  const closeMenuOutside = (event: PointerEvent) => {
+    if (menu && !menu.contains(event.target as Node) && !picker.contains(event.target as Node)) closeMenu();
+  };
+  doc.addEventListener("pointerdown", closeMenuOutside, true);
+  win.addEventListener("blur", closeMenu);
+  // A slider dragged past its row keeps the outlines until it is let go.
+  const endTweakDrag = (event: PointerEvent) => {
+    if (!tweakDragging) return;
+    tweakDragging = false;
+    // The pointer was captured by the slider: show whichever tweak it is over now.
+    const row = (doc.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null)?.closest?.(".dc-tweak");
+    const over = [...tweakRows.values()].find((entry) => entry.row === row);
+    showTweak(over ? over.tweak.var : null);
+  };
+  win.addEventListener("pointerup", endTweakDrag);
   resolvedBox.addEventListener("change", () => {
     showResolved = resolvedBox.checked;
     refreshComments();
@@ -1587,6 +1913,9 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
       if (toastTimer) clearTimeout(toastTimer);
       resizeObserver.disconnect();
       win.removeEventListener("message", onMessage);
+      doc.removeEventListener("pointerdown", closeMenuOutside, true);
+      win.removeEventListener("blur", closeMenu);
+      win.removeEventListener("pointerup", endTweakDrag);
       root.remove();
     },
   };

@@ -1,5 +1,5 @@
 import { randomBytes, createHash } from "node:crypto";
-import { mkdir, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   CANVAS_FILE,
@@ -19,6 +19,7 @@ import {
   README_FILE,
   slugSchema,
   type TextTarget,
+  TRASH_DIR,
 } from "../shared/design";
 import {
   prune,
@@ -545,4 +546,50 @@ export async function unusedVariables(root: string, slug: string, manifest: Mani
   if (!manifest.tweaks?.length) return [];
   const views = await Promise.all(manifest.artboards.map((artboard) => renderArtboard(root, slug, artboard)));
   return manifest.tweaks.map((tweak) => tweak.var).filter((name) => !views.some((view) => usesVariable(view.html ?? "", name)));
+}
+
+// ---- Deleting ----------------------------------------------------------------------------
+
+/**
+ * Moves a design's folder to design/.trash/<slug>-<time>/, which the canvas does not list. Returns
+ * where it went, relative to the workspace, so the user can move it back.
+ */
+export function trashDesign(root: string, slug: string, now: number): Promise<{ trashedTo: string }> {
+  const dir = designDir(root, slug);
+  return serialize(path.join(dir, MANIFEST_FILE), async () => {
+    let info;
+    try {
+      info = await lstat(dir);
+    } catch (error) {
+      throw isMissing(error) ? new Error(`No design ${slug}`) : error;
+    }
+    if (!info.isDirectory() && !info.isSymbolicLink()) throw new Error(`No design ${slug}`);
+    const trash = path.join(designRoot(root), TRASH_DIR);
+    await mkdir(trash, { recursive: true });
+    const stamp = new Date(now).toISOString().replace(/\.\d+Z$/, "Z").replace(/[:]/g, "-");
+    let target = path.join(trash, `${slug}-${stamp}`);
+    for (let n = 2; await exists(target); n++) target = path.join(trash, `${slug}-${stamp}-${n}`);
+    // A symlinked design folder moves as the link; what it points at is left alone.
+    await rename(dir, target);
+    return { trashedTo: path.relative(root, target) };
+  });
+}
+
+async function exists(file: string): Promise<boolean> {
+  try {
+    await lstat(file);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Changes the title the canvas and the agents see; the folder keeps its name. */
+export function renameDesign(root: string, slug: string, title: string): Promise<{ title: string }> {
+  return serialize(path.join(designDir(root, slug), MANIFEST_FILE), async () => {
+    const read = await readManifest(root, slug);
+    if (!read.manifest) throw new Error(read.error);
+    await writeManifest(root, slug, { ...read.manifest, title });
+    return { title };
+  });
 }

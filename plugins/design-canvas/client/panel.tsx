@@ -12,7 +12,9 @@ import { z } from "zod";
 import {
   addComment,
   deleteComment,
+  deleteDesign,
   editText,
+  renameDesign,
   getDesign,
   getDesignVersion,
   initCanvas,
@@ -49,6 +51,8 @@ export function DesignPanel({ theme, workspaceId, params, tab }: PluginAgentPane
     moveArtboard: useRpc(moveArtboard),
     editText: useRpc(editText),
     saveTweaks: useRpc(saveTweaks),
+    deleteDesign: useRpc(deleteDesign),
+    renameDesign: useRpc(renameDesign),
   };
   // The canvas mounts once per agent; it reads the latest functions through this ref.
   const latest = useRef({ calls, paseo, setTabState });
@@ -75,6 +79,10 @@ export function DesignPanel({ theme, workspaceId, params, tab }: PluginAgentPane
         latest.current.calls.moveElement({ workspaceId, slug, artboardId, dcId, style, expected }),
       editText: (slug, artboardId, target, before, after, expected) =>
         latest.current.calls.editText({ workspaceId, slug, artboardId, target, before, after, expected }),
+      renameDesign: async (slug, title) => {
+        await latest.current.calls.renameDesign({ workspaceId, slug, title });
+      },
+      deleteDesign: async (slug) => (await latest.current.calls.deleteDesign({ workspaceId, slug })).trashedTo,
       saveTweaks: (slug, values) => latest.current.calls.saveTweaks({ workspaceId, slug, values }),
       moveArtboard: async (slug, artboardId, position) => {
         await latest.current.calls.moveArtboard({ workspaceId, slug, artboardId, position });

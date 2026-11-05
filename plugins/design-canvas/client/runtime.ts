@@ -6,8 +6,9 @@ import { COMMENT_CURSOR } from "./cursors";
  * bundler's helpers (such as esbuild's __name) would not exist inside the iframe.
  *
  * It draws hover and selection boxes, numbered comment pins and layout guides in a shadow root,
- * reports picked elements, moves elements and edits text in the Move tool, applies tweak values,
- * forwards zoom and pan gestures, and reports the page height. It only ever talks to its parent window.
+ * reports picked elements, moves elements and edits text in the Move tool, applies tweak values and
+ * shows which elements a tweak drives, forwards zoom and pan gestures, and reports the page height.
+ * It only ever talks to its parent window.
  */
 export const RUNTIME_SOURCE = String.raw`(function () {
   "use strict";
@@ -33,6 +34,15 @@ export const RUNTIME_SOURCE = String.raw`(function () {
   var editing = null;
   var frameQueued = false;
   var lastHeight = -1;
+  // Tweaks: the variables the open Tweaks panel lists, the one being shown, and the drawing of it
+  var tweakNames = [];
+  var tweakShown = null;
+  var tweakLayer = null;
+  var veil = null;
+  var scanCache = null;
+  var lastTweakHover = "";
+  // Elements whose style the runtime touched itself, so the mutation it causes is not a page change
+  var touched = [];
   var COLORS = { pending: "#d97757", sent: "#3b82f6", resolved: "#16a34a" };
   var PX = /^-?\d+(?:\.\d+)?px$/;
 
@@ -341,6 +351,226 @@ export const RUNTIME_SOURCE = String.raw`(function () {
     return el;
   }
 
+  // ---- What a tweak drives ----
+
+  var VAR_REF = /var\(\s*(--[A-Za-z0-9_-]+)/g;
+  var PSEUDO_ELEMENT = /::?(?:before|after|first-line|first-letter|marker|placeholder|selection|backdrop|file-selector-button)\b/g;
+  var DYNAMIC = /:(?:hover|focus|focus-visible|focus-within|active|visited|target)\b/g;
+
+  /** "a: b; c: url(x;y)" as [{prop, value}], keeping semicolons inside parentheses and quotes. */
+  function declarations(text) {
+    var out = [], depth = 0, quote = "", cur = "";
+    function push() {
+      var i = cur.indexOf(":");
+      if (i > 0) out.push({ prop: cur.slice(0, i).trim().toLowerCase(), value: cur.slice(i + 1) });
+      cur = "";
+    }
+    for (var k = 0; k < text.length; k++) {
+      var ch = text[k];
+      if (quote) { if (ch === quote) quote = ""; }
+      else if (ch === '"' || ch === "'") quote = ch;
+      else if (ch === "(") depth++;
+      else if (ch === ")") depth = Math.max(0, depth - 1);
+      else if (ch === ";" && depth === 0) { push(); continue; }
+      cur += ch;
+    }
+    push();
+    return out;
+  }
+
+  /**
+   * Every place the page's CSS reads a variable: the rules (and inline styles) that use it, with the
+   * properties, and which custom properties are themselves made from other variables.
+   */
+  function scan() {
+    if (scanCache && Date.now() - scanCache.at < 800) return scanCache;
+    var direct = {}, derived = {};
+    function note(target, text) {
+      declarations(text || "").forEach(function (d) {
+        VAR_REF.lastIndex = 0;
+        var m;
+        while ((m = VAR_REF.exec(d.value))) {
+          if (d.prop.indexOf("--") === 0) (derived[d.prop] = derived[d.prop] || []).push(m[1]);
+          else (direct[m[1]] = direct[m[1]] || []).push({ target: target, prop: d.prop });
+        }
+      });
+    }
+    function walk(rules) {
+      for (var i = 0; i < rules.length; i++) {
+        var rule = rules[i];
+        if (rule.selectorText !== undefined && rule.style) note(rule.selectorText, rule.style.cssText);
+        if (rule.cssRules) walk(rule.cssRules);
+      }
+    }
+    for (var i = 0; i < document.styleSheets.length; i++) {
+      try { walk(document.styleSheets[i].cssRules); } catch (e) {}
+    }
+    var styled = document.querySelectorAll("[style]");
+    for (var j = 0; j < styled.length; j++) if (!isOurs(styled[j])) note(styled[j], styled[j].getAttribute("style"));
+    scanCache = { at: Date.now(), direct: direct, derived: derived, uses: {} };
+    return scanCache;
+  }
+
+  function elementsFor(target) {
+    if (typeof target !== "string") return [target];
+    var parts = target.split(",").map(function (part) { return part.replace(PSEUDO_ELEMENT, "").replace(DYNAMIC, "").trim(); })
+      .filter(function (part) { return part && !/[>+~]$/.test(part); });
+    if (!parts.length) return [];
+    try { return [].slice.call(document.querySelectorAll(parts.join(","))); } catch (e) { return []; }
+  }
+
+  /** The elements a variable reaches, each with the properties that read it. */
+  function usesOf(name) {
+    var s = scan();
+    if (s.uses[name]) return s.uses[name];
+    var names = [name], seen = {};
+    seen[name] = true;
+    for (var i = 0; i < names.length; i++) {
+      for (var prop in s.derived) {
+        if (!seen[prop] && s.derived[prop].indexOf(names[i]) >= 0) { seen[prop] = true; names.push(prop); }
+      }
+    }
+    var found = [], props = [];
+    names.forEach(function (n) {
+      (s.direct[n] || []).forEach(function (use) {
+        elementsFor(use.target).forEach(function (el) {
+          if (isOurs(el) || !(el === document.documentElement || (document.body && document.body.contains(el)))) return;
+          var at = found.indexOf(el);
+          if (at < 0) { found.push(el); props.push([use.prop]); }
+          else if (props[at].indexOf(use.prop) < 0) props[at].push(use.prop);
+        });
+      });
+    });
+    s.uses[name] = { elements: found, props: props };
+    return s.uses[name];
+  }
+
+  function reportTweakUses() {
+    if (!tweakNames.length) return;
+    scanCache = null;
+    var counts = {};
+    tweakNames.forEach(function (name) { counts[name] = usesOf(name).elements.length; });
+    post({ type: "tweak-uses", counts: counts });
+  }
+
+  /** The listed tweaks that drive the element under the pointer, or one of its parents below <body>. */
+  function tweaksAt(el) {
+    var out = [];
+    tweakNames.forEach(function (name) {
+      var found = usesOf(name).elements;
+      for (var x = el; x && x.nodeType === 1 && x !== document.body && x !== document.documentElement; x = x.parentElement) {
+        if (found.indexOf(x) >= 0) { out.push(name); break; }
+      }
+    });
+    return out;
+  }
+
+  function hoverTweaks(el) {
+    var names = el && tweakNames.length ? tweaksAt(el) : [];
+    var key = names.join(" ");
+    if (key === lastTweakHover) return;
+    lastTweakHover = key;
+    post({ type: "tweak-hover", names: names });
+  }
+
+  /**
+   * A box for an element, measured where it would be when the tweak currently hides it. The page's
+   * own inline style is put back exactly, within the same task, so nothing is ever drawn shown.
+   */
+  function measure(el) {
+    var cs = getComputedStyle(el);
+    var hidden = cs.display === "none";
+    var saved = null;
+    if (hidden) {
+      saved = {
+        attr: el.getAttribute("style"),
+        display: [el.style.getPropertyValue("display"), el.style.getPropertyPriority("display")],
+        visibility: [el.style.getPropertyValue("visibility"), el.style.getPropertyPriority("visibility")]
+      };
+      touched.push(el);
+      el.style.setProperty("display", "block", "important");
+      el.style.setProperty("visibility", "hidden", "important");
+    }
+    var r = el.getBoundingClientRect();
+    var radius = cs.borderTopLeftRadius || "0";
+    var px = /%$/.test(radius) ? (parseFloat(radius) / 100) * r.width : parseFloat(radius) || 0;
+    if (saved) {
+      if (saved.attr === null) el.removeAttribute("style");
+      else {
+        if (saved.display[0]) el.style.setProperty("display", saved.display[0], saved.display[1]); else el.style.removeProperty("display");
+        if (saved.visibility[0]) el.style.setProperty("visibility", saved.visibility[0], saved.visibility[1]); else el.style.removeProperty("visibility");
+      }
+    }
+    return { r: r, radius: px, hidden: hidden };
+  }
+
+  function opaque(color) {
+    return !!color && color !== "transparent" && !/rgba\([^)]*,\s*0\)$/.test(color);
+  }
+
+  /** What the page fades into: its background colour, or for a gradient, dark or light by its text. */
+  function pageBackground() {
+    var els = [document.body, document.documentElement];
+    for (var i = 0; i < els.length; i++) {
+      var c = els[i] && getComputedStyle(els[i]).backgroundColor;
+      if (opaque(c)) return c;
+    }
+    var ink = document.body ? getComputedStyle(document.body).color : "";
+    var rgb = (ink.match(/\d+(\.\d+)?/g) || []).slice(0, 3).map(Number);
+    var light = rgb.length === 3 && 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2] > 150;
+    return light ? "#121212" : "#ffffff";
+  }
+
+  /** Outlines what the shown tweak drives and fades the rest of the page into its background. */
+  function drawTweak() {
+    while (tweakLayer.firstChild) tweakLayer.removeChild(tweakLayer.firstChild);
+    var ctx = veil.getContext("2d");
+    if (!tweakShown) { veil.style.display = "none"; return; }
+    var use = usesOf(tweakShown);
+    var w = document.documentElement.clientWidth || window.innerWidth, h = window.innerHeight;
+    if (veil.width !== w || veil.height !== h) { veil.width = w; veil.height = h; }
+    veil.style.display = "block";
+    ctx.clearRect(0, 0, w, h);
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = 0.74;
+    ctx.fillStyle = pageBackground();
+    ctx.fillRect(0, 0, w, h);
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "destination-out";
+    var pad = 3 * scale;
+    var tagged = false;
+    use.elements.forEach(function (el, i) {
+      var m = measure(el);
+      // Inside something hidden there is nowhere to point at.
+      if (m.r.width === 0 && m.r.height === 0) return;
+      if (!m.hidden) {
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(m.r.left - pad, m.r.top - pad, m.r.width + pad * 2, m.r.height + pad * 2, m.radius + pad);
+        else ctx.rect(m.r.left - pad, m.r.top - pad, m.r.width + pad * 2, m.r.height + pad * 2);
+        ctx.fill();
+      }
+      var box = document.createElement("div");
+      box.className = "tw" + (m.hidden ? " hidden" : "");
+      box.style.left = m.r.left + window.scrollX - pad + "px";
+      box.style.top = m.r.top + window.scrollY - pad + "px";
+      box.style.width = m.r.width + pad * 2 + "px";
+      box.style.height = m.r.height + pad * 2 + "px";
+      box.style.borderRadius = m.radius + pad + "px";
+      box.style.borderWidth = 1.5 * scale + "px";
+      if (!tagged) {
+        tagged = true;
+        // One tag per artboard names what the tweak sets.
+        var tag = document.createElement("span");
+        tag.className = "tag";
+        var props = use.props[i];
+        tag.textContent = (props.length > 2 ? props.slice(0, 2).join(" · ") + " +" + (props.length - 2) : props.join(" · ")) + (m.hidden ? " (hidden)" : "");
+        tag.style.transform = "scale(" + scale + ")";
+        box.appendChild(tag);
+      }
+      tweakLayer.appendChild(box);
+    });
+  }
+
   function ensureLayer() {
     if (layer || !document.documentElement) return;
     host = document.createElement("design-canvas-overlay");
@@ -360,6 +590,11 @@ export const RUNTIME_SOURCE = String.raw`(function () {
       "color:#fff;font:600 12px/24px system-ui,sans-serif;text-align:center;pointer-events:auto;cursor:pointer;",
       "box-shadow:0 1px 3px rgba(0,0,0,.35);border:1.5px solid #fff;box-sizing:border-box;user-select:none}",
       ".pin.resolved{opacity:.55}",
+      ".veil{position:fixed;left:0;top:0;pointer-events:none;display:none}",
+      ".tw{position:absolute;box-sizing:border-box;border:1.5px solid #0d99ff;background:rgba(13,153,255,.06);pointer-events:none}",
+      ".tw.hidden{border-style:dashed;background:transparent}",
+      ".tw .tag{position:absolute;left:0;bottom:100%;margin-bottom:2px;padding:0 5px;height:17px;border-radius:4px 4px 4px 0;background:#0d99ff;",
+      "color:#fff;font:600 10.5px/17px ui-monospace,SFMono-Regular,Menlo,monospace;white-space:nowrap;transform-origin:0 100%}",
       ".grid{position:fixed;inset:0;pointer-events:none;display:none;",
       "background-image:linear-gradient(to right,rgba(217,119,87,.18) 1px,transparent 1px),",
       "linear-gradient(to bottom,rgba(217,119,87,.18) 1px,transparent 1px);background-size:8px 8px}"
@@ -375,6 +610,11 @@ export const RUNTIME_SOURCE = String.raw`(function () {
     selBox.className = "box sel";
     for (var h = 0; h < 4; h++) selBox.appendChild(document.createElement("i"));
     layer = document.createElement("div");
+    veil = document.createElement("canvas");
+    veil.className = "veil";
+    tweakLayer = document.createElement("div");
+    root.appendChild(veil);
+    root.appendChild(tweakLayer);
     root.appendChild(grid);
     root.appendChild(selBox);
     root.appendChild(hoverBox);
@@ -406,6 +646,7 @@ export const RUNTIME_SOURCE = String.raw`(function () {
     selBox.className = "box sel" + (editing ? " text" : "");
     place(selBox, boxed ? pageRect(boxed) : null, 1.5);
     for (var c = 0; c < selBox.children.length; c++) selBox.children[c].style.transform = "scale(" + scale + ")";
+    drawTweak();
     while (layer.firstChild) layer.removeChild(layer.firstChild);
     // The visible width: a spinning or overflowing element must not push pins off the artboard
     var maxX = document.documentElement.clientWidth || window.innerWidth;
@@ -494,6 +735,12 @@ export const RUNTIME_SOURCE = String.raw`(function () {
       if (textNode && typeof data.text === "string") textNode.data = data.text;
     } else if (data.type === "tweaks") {
       applyTweaks(data.vars);
+    } else if (data.type === "tweak-scan") {
+      tweakNames = Array.isArray(data.names) ? data.names.filter(function (n) { return /^--[A-Za-z0-9_-]{1,60}$/.test(n); }) : [];
+      if (!tweakNames.length) { tweakShown = null; hoverTweaks(null); }
+      reportTweakUses();
+    } else if (data.type === "tweak-show") {
+      tweakShown = typeof data.name === "string" && /^--[A-Za-z0-9_-]{1,60}$/.test(data.name) ? data.name : null;
     } else if (data.type === "pins") {
       pins = Array.isArray(data.pins) ? data.pins : [];
       selectedId = data.selectedId || null;
@@ -506,6 +753,7 @@ export const RUNTIME_SOURCE = String.raw`(function () {
       selected = null;
       endEdit(true);
     } else if (data.type === "clear-hover") {
+      hoverTweaks(null);
       if (!hovered) return;
       hovered = null;
     }
@@ -513,6 +761,7 @@ export const RUNTIME_SOURCE = String.raw`(function () {
   });
 
   document.addEventListener("mousemove", function (event) {
+    if (tweakNames.length && mode !== "hand" && !isOurs(event.target)) hoverTweaks(event.target);
     if ((mode !== "comment" && mode !== "move") || editing) return;
     var next = mode === "move" ? movable(event.target) : target(event.target, event.altKey);
     if (next !== hovered) { hovered = next; schedule(); }
@@ -520,6 +769,7 @@ export const RUNTIME_SOURCE = String.raw`(function () {
 
   // The pointer left the page (into the canvas or another artboard).
   document.addEventListener("mouseout", function (event) {
+    if (!event.relatedTarget) hoverTweaks(null);
     if (!event.relatedTarget && hovered) { hovered = null; schedule(); }
   });
 
@@ -675,9 +925,16 @@ export const RUNTIME_SOURCE = String.raw`(function () {
       if (document.body) observer.observe(document.body);
     }
     if (window.MutationObserver && document.body) {
-      new MutationObserver(schedule).observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
+      new MutationObserver(function (records) {
+        // Measuring a hidden element touches its style; that is not the page changing.
+        var ours = touched;
+        touched = [];
+        if (records.every(function (r) { return r.type === "attributes" && r.attributeName === "style" && ours.indexOf(r.target) >= 0; })) return;
+        scanCache = null;
+        schedule();
+      }).observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
     }
-    window.addEventListener("load", schedule);
+    window.addEventListener("load", function () { reportTweakUses(); schedule(); });
     setInterval(schedule, 1000);
     lastHeight = pageHeight();
     post({ type: "ready", height: lastHeight });

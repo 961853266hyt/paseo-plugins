@@ -1,7 +1,15 @@
 # Changelog
 
-## 0.2.1
+## 0.3.0
 
+- Hovering a tweak shows what it drives: every element it reaches is outlined on all artboards,
+  the rest fades, a tag names the CSS property, and each artboard's label counts its elements.
+  Each tweak says how many elements on how many artboards it reaches (from the pages' own CSS,
+  shorthands and variables built from other variables included). Hovering an element on an
+  artboard lights up the tweaks that drive it.
+- The design picker is a menu in Paseo's style. Hovering a design shows rename and delete, both
+  done in the row: renaming edits the title in design.json, deleting asks in the row and moves the
+  folder to design/.trash/, from where it can be moved back.
 - The plugin page shows a 30-second demo video instead of three screenshots, and the overviews
   no longer repeat the screenshots the page already shows.
 

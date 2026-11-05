@@ -68,6 +68,8 @@ function fakeApi(view: DesignView | null): CanvasApi & { sent: string[] } {
       sent.push(text);
     }),
     startDesign: vi.fn(async () => {}),
+    renameDesign: vi.fn(async () => {}),
+    deleteDesign: vi.fn(async (slug: string) => `design/.trash/${slug}-2026-11-05T00-00-00Z`),
   };
 }
 
@@ -259,3 +261,72 @@ describe("tweaks panel", () => {
     expect(api.sent[0]).toContain("design_set_tweaks");
   });
 });
+
+describe("design menu", () => {
+  async function openMenu() {
+    const api = fakeApi(design([comment]));
+    const host = mount(api);
+    await settle();
+    const picker = host.querySelector('[data-testid="design-canvas-picker"]') as HTMLButtonElement;
+    expect(picker.textContent).toContain("Pricing");
+    picker.click();
+    const menu = host.querySelector('[data-testid="design-canvas-menu"]') as HTMLElement;
+    return { api, host, menu };
+  }
+
+  test("lists each design by its name only, with new design last", async () => {
+    const { menu } = await openMenu();
+    expect([...menu.querySelectorAll(".dc-menu-title")].map((n) => n.textContent)).toEqual(["Pricing", "newDesign"]);
+    expect(menu.querySelector(".dc-menu-new .dc-menu-icon svg")).not.toBeNull();
+  });
+
+  test("renames in the row: Enter keeps the name, Escape puts it back", async () => {
+    const { api, menu } = await openMenu();
+    (menu.querySelector(".dc-act") as HTMLButtonElement).click();
+    let field = menu.querySelector(".dc-menu-field") as HTMLInputElement;
+    field.value = "Nope";
+    field.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    expect(api.renameDesign).not.toHaveBeenCalled();
+    expect(menu.querySelector(".dc-menu-field")).toBeNull();
+    (menu.querySelector(".dc-act") as HTMLButtonElement).click();
+    field = menu.querySelector(".dc-menu-field") as HTMLInputElement;
+    field.value = "  Pricing v2 ";
+    field.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await settle();
+    expect(api.renameDesign).toHaveBeenCalledWith("pricing", "Pricing v2");
+  });
+
+  test("deletes after the row asks", async () => {
+    const { api, menu } = await openMenu();
+    (menu.querySelector(".dc-act-danger") as HTMLButtonElement).click();
+    const asking = menu.querySelector(".dc-asking") as HTMLElement;
+    expect(asking.textContent).toContain("deleteDesignTitle");
+    expect(api.deleteDesign).not.toHaveBeenCalled();
+    (asking.querySelector(".dc-mini-danger") as HTMLButtonElement).click();
+    await settle();
+    expect(api.deleteDesign).toHaveBeenCalledWith("pricing");
+  });
+});
+
+describe("tweak reach", () => {
+  test("shows what the pages counted, and lights up the tweaks driving the hovered element", async () => {
+    const view = design([]);
+    view.manifest!.tweaks = [{ id: "gap", label: "Gap", type: "range", var: "--gap", min: 8, max: 48, unit: "px", default: 24 }];
+    view.artboards[0]!.html = "<!doctype html><style>p { gap: var(--gap) }</style><p>Hi</p>";
+    const host = mount(fakeApi(view));
+    await settle();
+    (host.querySelector(".dc-toolbar .dc-btn:nth-last-child(2)") as HTMLButtonElement).click();
+    const frame = host.querySelector("iframe.dc-board-frame") as HTMLIFrameElement;
+    const source = frame.contentWindow;
+    if (!source) return; // happy-dom without iframe windows: covered by the browser check
+    const say = (data: object) => window.dispatchEvent(new MessageEvent("message", { source, data: { mark: "design-canvas/1", ...data } }));
+    say({ type: "tweak-uses", counts: { "--gap": 4 } });
+    const row = host.querySelector('[data-tweak="gap"]') as HTMLElement;
+    expect(row.querySelector(".dc-tweak-uses")?.textContent).toBe('elements_other:{"count":"4"} · artboards_one:{"count":"1"}');
+    say({ type: "tweak-hover", names: ["--gap"] });
+    expect(row.classList.contains("dc-linked")).toBe(true);
+    say({ type: "tweak-uses", counts: { "--gap": 0 } });
+    expect(row.querySelector(".dc-tweak-warn")?.textContent).toContain("--gap");
+  });
+});
+

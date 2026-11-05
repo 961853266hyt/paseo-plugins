@@ -41,8 +41,6 @@
   "sent": "已把 {{count}} 条评论发给 agent",
   "newDesignTitle": "新建设计",
   "emptyTitle": "还没有设计",
-  "newDesignHelp": "描述要设计什么。agent 会在这里用 HTML 画出画板，然后你可以点选元素留评论。",
-  "briefPlaceholder": "例如：一个有三档套餐、月付/年付切换和常见问题的定价页，做桌面和手机两个尺寸。",
   "startDesign": "交给 agent",
   "startedDesign": "已发给 agent。设计画出来后会显示在这里。",
   "noSuchPage": "这个设计里没有 {{file}} 对应的画板",
@@ -66,5 +64,16 @@
   "textConflict": "{{file}} 在磁盘上被改过了，这次改字没有保存，页面已重新载入。",
   "textFailed": "改字没能保存：{{error}}",
   "applyTweaks": "写进设计",
-  "tweaksApplying": "已发给 agent，它会把这些值写进设计的 CSS 和默认值。"
+  "tweaksApplying": "已发给 agent，它会把这些值写进设计的 CSS 和默认值。",
+  "deleteDesign": "删除设计",
+  "deleteDesignTitle": "删除“{{title}}”？",
+  "deleteConfirm": "删除",
+  "designDeleted": "已删除“{{title}}”，可在 {{path}} 找回",
+  "elements_one": "1 个元素",
+  "elements_other": "{{count}} 个元素",
+  "artboards_one": "1 个画板",
+  "artboards_other": "{{count}} 个画板",
+  "openComments_one": "1 条未解决评论",
+  "openComments_other": "{{count}} 条未解决评论",
+  "renameDesign": "重命名"
 }
