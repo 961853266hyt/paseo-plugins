@@ -95,6 +95,8 @@ export function createDesignTools(now: () => number = Date.now): AgentToolDefini
       for (const artboard of checked.data.artboards) {
         await writeFile(path.join(dir, artboard.file), placeholderPage(checked.data.title, artboard.title), "utf8");
       }
+      // Only lets the home screen open the design next to this agent's chat; the design works without it.
+      await store.rememberDesignAgent(root, input.slug, agent.id).catch(() => {});
       const files = checked.data.artboards.map((artboard) => `- ${DESIGN_DIR}/${input.slug}/${artboard.file} (${artboard.title}, ${artboard.width}px wide)`);
       return text(
         [

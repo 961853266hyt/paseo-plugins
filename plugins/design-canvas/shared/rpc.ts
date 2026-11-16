@@ -175,3 +175,56 @@ export const saveTweaks = defineRpc({
     versions: z.record(z.string(), z.string()),
   }),
 });
+
+export const homeDesignSchema = designSummarySchema.extend({
+  /** When a file of the design last changed, in ms since the epoch. */
+  updatedAt: z.number(),
+  /** The agent that created the design, when the canvas knows it. */
+  agentId: z.string().nullable(),
+});
+export type HomeDesign = z.infer<typeof homeDesignSchema>;
+
+export const homeProjectSchema = z.object({
+  workspaceId: z.string(),
+  /** The workspace's folder; other workspaces on the same folder share its designs. */
+  directory: z.string(),
+  /** The project's name, e.g. the repository. */
+  project: z.string(),
+  /** The workspace's name, e.g. its branch; the same as `project` for a plain checkout. */
+  workspace: z.string(),
+  designs: z.array(homeDesignSchema),
+});
+export type HomeProject = z.infer<typeof homeProjectSchema>;
+
+/** Every workspace on this host, with the designs of those that use the canvas. */
+export const listHome = defineRpc({
+  name: "list_home",
+  input: z.object({}),
+  output: z.object({ projects: z.array(homeProjectSchema) }),
+});
+
+/** A design's first artboard, for its card on the home screen. */
+export const getCover = defineRpc({
+  name: "get_cover",
+  input: designInput,
+  output: z.object({ cover: artboardViewSchema.nullable() }),
+});
+
+/** The design as a zip to share: its folder, laid out as under design/. */
+export const exportDesign = defineRpc({
+  name: "export_design",
+  input: designInput,
+  output: z.object({ fileName: z.string(), base64: z.string() }),
+});
+
+/** Unpacks an exported design into the workspace's design/ folder, under a free name. */
+export const importDesign = defineRpc({
+  name: "import_design",
+  input: workspaceInput.extend({ base64: z.string().min(1).max(40_000_000) }),
+  output: z.object({
+    slug: slugSchema,
+    title: z.string(),
+    /** Shared files the workspace already had with other contents, left as they were. */
+    kept: z.array(z.string()),
+  }),
+});

@@ -154,7 +154,11 @@ export type CommentsFile = z.infer<typeof commentsFileSchema>;
 
 export const EMPTY_COMMENTS: CommentsFile = { version: 1, nextNumber: 1, comments: [] };
 
-export const canvasFileSchema = z.looseObject({ version: z.literal(1) });
+export const canvasFileSchema = z.looseObject({
+  version: z.literal(1),
+  /** The agent that created each design, so the home screen can return to its chat. */
+  agents: z.record(z.string(), z.string()).optional(),
+});
 
 /** Open comments are the ones the agent still has to act on. */
 export function isOpen(comment: Comment): boolean {

@@ -1,4 +1,4 @@
-import { type Comment, DESIGN_DIR, type Manifest } from "./design";
+import { type Comment, DESIGN_DIR, type DesignKind, type Manifest } from "./design";
 import { cssValue, effectiveValue, prune, TWEAKS_CSS, type TweakValues } from "./tweaks";
 
 /** The agent label that gives an agent the design tools even before its workspace uses the canvas. */
@@ -37,12 +37,21 @@ export function commentsPrompt(slug: string, manifest: Manifest | null, comments
   ].join("\n");
 }
 
+const KIND_NAMES: Record<DesignKind, string> = {
+  prototype: "high-fidelity prototype",
+  wireframe: "low-fidelity wireframe",
+  "one-pager": "one-pager",
+  slides: "slide deck, one artboard per slide",
+  other: "design",
+};
+
 /** The message that starts a new design. */
-export function newDesignPrompt(brief: string): string {
+export function newDesignPrompt(brief: string, kind?: DesignKind): string {
   return [
     "Create a new design on the Design canvas:",
     "",
     brief.trim(),
+    ...(kind ? ["", `Make it a ${KIND_NAMES[kind]} (kind "${kind}" in design_create).`] : []),
     "",
     `Use design_create to set it up (read ${DESIGN_DIR}/README.md for the conventions), then write each artboard as a complete, self-contained HTML page with local CSS and assets only. Give the elements I might comment on a data-dc-id. When the request leaves room for interpretation, show 2 or 3 variants as artboards in one group.`,
   ].join("\n");

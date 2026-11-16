@@ -66,7 +66,12 @@ export const CANVAS_CSS = `
 .dc-menu-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dc-current .dc-menu-title { font-weight: 600; }
 .dc-menu-actions { display: flex; gap: 2px; margin-right: 4px; opacity: 0; }
-.dc-menu-item:hover .dc-menu-actions, .dc-menu-item:focus-within .dc-menu-actions { opacity: 1; }
+.dc-menu-item:hover .dc-menu-actions, .dc-menu-item:focus-within .dc-menu-actions, .dc-menu-item.dc-open .dc-menu-actions { opacity: 1; }
+.dc-menu-item.dc-open { background: var(--dc-surface2); }
+.dc-menu-item.dc-open .dc-more { background: var(--dc-border); color: var(--dc-fg); }
+.dc-menu-item.dc-open .dc-more::after { opacity: 0; }
+.dc-menu.dc-row-menu { min-width: 168px; z-index: 26; }
+.dc-menu-danger .dc-menu-pick, .dc-menu-danger .dc-menu-icon { color: var(--dc-danger); }
 .dc-btn.dc-act { width: 24px; height: 24px; color: var(--dc-muted); }
 .dc-btn.dc-act svg { width: 14px; height: 14px; }
 .dc-btn.dc-act:hover:not(:disabled) { background: var(--dc-border); color: var(--dc-fg); }

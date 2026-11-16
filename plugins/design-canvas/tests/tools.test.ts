@@ -57,6 +57,7 @@ describe("design tools", () => {
     const manifest = (await store.readManifest(root, "pricing")).manifest;
     expect(manifest?.artboards.map((artboard) => artboard.file)).toEqual(["desktop.html", "mobile.html"]);
     expect(await readFile(path.join(root, "design", "pricing", "mobile.html"), "utf8")).toContain('data-dc-id="placeholder"');
+    expect(await store.readDesignAgents(root)).toEqual({ pricing: "a1" });
     const again = await run("design_create", { slug: "pricing", title: "x", kind: "other", artboards: [{ id: "a", title: "A", width: 400 }] });
     expect(again.isError).toBe(true);
   });

@@ -1,8 +1,9 @@
 import { randomBytes, createHash } from "node:crypto";
-import { lstat, mkdir, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   CANVAS_FILE,
+  canvasFileSchema,
   COMMENTS_FILE,
   type Anchor,
   type Artboard,
@@ -36,6 +37,7 @@ import { DESIGN_GUIDE } from "./guide";
 import { findByDcId, replaceText, setInlineStyle } from "./html-patch";
 import { inlineHtml } from "./inline";
 import { designDir, designRoot, resolveInside } from "./paths";
+import { readZip, writeZip, type ZipEntry } from "./zip";
 
 /** A design folder holds a few dozen files; this bounds a runaway one. */
 const MAX_VERSIONED_FILES = 2000;
@@ -343,6 +345,210 @@ export async function designVersion(root: string, slug: string): Promise<string>
   await walk(path.join(designRoot(root), "systems"), files);
   files.sort();
   return hash(await Promise.all(files.map(statKey)));
+}
+
+/** When a file of the design last changed, in ms since the epoch; 0 when none could be read. */
+export async function designUpdatedAt(root: string, slug: string): Promise<number> {
+  const files: string[] = [];
+  await walk(designDir(root, slug), files);
+  const times = await Promise.all(
+    files.map((file) =>
+      stat(file).then(
+        (info) => info.mtimeMs,
+        () => 0,
+      ),
+    ),
+  );
+  return Math.round(Math.max(0, ...times));
+}
+
+/** The agent that created each design, by slug. */
+export async function readDesignAgents(root: string): Promise<Record<string, string>> {
+  try {
+    const parsed = canvasFileSchema.safeParse(JSON.parse(await readFile(path.join(designRoot(root), CANVAS_FILE), "utf8")));
+    return parsed.success ? (parsed.data.agents ?? {}) : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Remembers which agent created a design, in design/canvas.json. */
+export function rememberDesignAgent(root: string, slug: string, agentId: string): Promise<void> {
+  const file = path.join(designRoot(root), CANVAS_FILE);
+  return serialize(file, async () => {
+    let current: Record<string, unknown> = { version: 1 };
+    try {
+      const parsed = canvasFileSchema.safeParse(JSON.parse(await readFile(file, "utf8")));
+      if (parsed.success) current = parsed.data;
+    } catch (error) {
+      if (!isMissing(error) && !(error instanceof SyntaxError)) throw error;
+    }
+    const agents = { ...(canvasFileSchema.safeParse(current).data?.agents ?? {}), [slug]: agentId };
+    await writeFileAtomic(file, `${JSON.stringify({ ...current, version: 1, agents }, null, 2)}\n`);
+  });
+}
+
+/** An export bigger than this is refused; it travels to the app in one message. */
+export const MAX_EXPORT_BYTES = 20 * 1024 * 1024;
+
+/**
+ * The design as a zip laid out like design/: its own folder, plus files outside it that its pages
+ * use (such as a design system under systems/). Unzipped into another workspace's design/ folder
+ * it is a working design again, and its pages open in a browser as they are.
+ */
+export async function exportDesign(root: string, slug: string): Promise<{ fileName: string; zip: Buffer }> {
+  const read = await readManifest(root, slug);
+  if (!read.manifest) throw new Error(read.error);
+  const base = designRoot(root);
+  const dir = designDir(root, slug);
+  const files: string[] = [];
+  await walk(dir, files);
+  for (const artboard of read.manifest.artboards) {
+    try {
+      const file = await resolveInside(dir, dir, artboard.file);
+      const { files: used } = await inlineHtml(await readFile(file, "utf8"), file, base);
+      files.push(...used);
+    } catch {
+      // A missing or unreadable page exports as it is.
+    }
+  }
+  const names = new Set<string>();
+  const entries: ZipEntry[] = [];
+  let total = 0;
+  for (const file of files) {
+    const relative = path.relative(base, file);
+    if (relative.startsWith("..") || path.isAbsolute(relative) || relative.endsWith(".tmp")) continue;
+    const name = relative.split(path.sep).join("/");
+    if (names.has(name)) continue;
+    let info;
+    try {
+      info = await stat(file);
+    } catch {
+      continue;
+    }
+    if (!info.isFile()) continue;
+    names.add(name);
+    total += info.size;
+    if (total > MAX_EXPORT_BYTES) throw new Error(`${slug} is over ${MAX_EXPORT_BYTES / 1024 / 1024} MB, too big to export here. Zip ${dir} instead.`);
+    entries.push({ name, data: await readFile(file), mtime: info.mtimeMs });
+  }
+  entries.sort((a, b) => (a.name === `${slug}/${MANIFEST_FILE}` ? -1 : b.name === `${slug}/${MANIFEST_FILE}` ? 1 : a.name.localeCompare(b.name)));
+  return { fileName: `${slug}.zip`, zip: writeZip(entries) };
+}
+
+/** An import that unpacks to more than this is refused. */
+export const MAX_IMPORT_BYTES = 50 * 1024 * 1024;
+
+export interface ImportResult {
+  slug: string;
+  title: string;
+  /** Shared files (outside the design's folder) the workspace already had with other contents, left as they were. */
+  kept: string[];
+}
+
+/** A zip entry name as path segments, or null when it could leave the folder it unpacks into. */
+function safeSegments(name: string): string[] | null {
+  if (name.includes("\\") || name.startsWith("/") || /^[a-z]:/i.test(name)) return null;
+  const segments = name.split("/");
+  if (segments.some((segment) => segment === "" || segment === "." || segment === ".." || segment.includes("\0"))) return null;
+  return segments;
+}
+
+/** Folders under design/ that are not designs and that an import must not write into. */
+const RESERVED = new Set([TRASH_DIR, CANVAS_FILE, README_FILE]);
+
+/**
+ * Unpacks a design exported by `exportDesign` (or a zip of a design folder) into this workspace's
+ * design/. A taken name gets a -2, -3… suffix. Shared files the workspace lacks are added; ones it
+ * has with other contents are kept and reported.
+ */
+export async function importDesign(root: string, zip: Buffer): Promise<ImportResult> {
+  const entries = readZip(zip, { maxEntries: MAX_VERSIONED_FILES, maxBytes: MAX_IMPORT_BYTES })
+    .filter((entry) => !entry.name.startsWith("__MACOSX/") && !entry.name.endsWith("/.DS_Store") && entry.name !== ".DS_Store");
+  const parsed = entries.map((entry) => ({ entry, segments: safeSegments(entry.name) }));
+  const unsafe = parsed.find((item) => item.segments === null);
+  if (unsafe) throw new Error(`The zip has a file outside its own folder: ${unsafe.entry.name}`);
+  // The design is the folder with the shallowest design.json; anything above it is a wrapper.
+  const manifests = parsed.filter((item) => item.segments!.at(-1) === MANIFEST_FILE && item.segments!.length >= 2);
+  if (manifests.length === 0) throw new Error("The zip has no design: no folder with a design.json");
+  const depth = Math.min(...manifests.map((item) => item.segments!.length));
+  const top = manifests.filter((item) => item.segments!.length === depth);
+  if (top.length > 1) throw new Error("The zip has more than one design; import them one at a time");
+  const prefix = top[0]!.segments!.slice(0, -2);
+  const from = top[0]!.segments!.at(-2)!;
+  const manifest = manifestSchema.safeParse(JSON.parse(top[0]!.entry.data.toString("utf8")));
+  if (!manifest.success) throw new Error(`${from}/${MANIFEST_FILE}: ${formatZodError(manifest.error)}`);
+
+  const own: { rel: string[]; data: Buffer }[] = [];
+  const shared: { rel: string[]; data: Buffer }[] = [];
+  for (const { entry, segments } of parsed) {
+    const rel = segments!;
+    if (rel.length <= prefix.length || prefix.some((segment, i) => rel[i] !== segment)) continue;
+    const inner = rel.slice(prefix.length);
+    if (inner[0] === from) own.push({ rel: inner.slice(1), data: entry.data });
+    else if (inner.length >= 2 && !RESERVED.has(inner[0]!) && !inner[0]!.startsWith(".")) shared.push({ rel: inner, data: entry.data });
+  }
+
+  const base = designRoot(root);
+  await initCanvas(root);
+  const realBase = await realpath(base);
+  return serialize(path.join(base, "#import"), async () => {
+    const stem = (slugSchema.safeParse(from).success ? from : slugify(manifest.data.title)).slice(0, 56);
+    let slug = stem;
+    for (let n = 2; await exists(designDir(root, slug)); n++) slug = `${stem}-${n}`;
+
+    // Shared files first: one that would land outside design/ stops the import before the design appears.
+    const kept: string[] = [];
+    for (const file of shared) {
+      const target = path.join(base, ...file.rel);
+      const name = file.rel.join("/");
+      let info;
+      try {
+        info = await lstat(target);
+      } catch (error) {
+        if (!isMissing(error)) throw error;
+      }
+      if (info) {
+        // A link or anything else already there is left alone.
+        if (!info.isFile() || !(await readFile(target)).equals(file.data)) kept.push(name);
+        continue;
+      }
+      // A folder on the way may be a link; only write where it really is inside design/.
+      let probe = path.dirname(target);
+      while (!(await exists(probe))) probe = path.dirname(probe);
+      const inside = path.relative(realBase, await realpath(probe));
+      if (inside.startsWith("..") || path.isAbsolute(inside)) throw new Error(`${name} would land outside design/`);
+      await mkdir(path.dirname(target), { recursive: true });
+      await writeFile(target, file.data, { flag: "wx" });
+    }
+    // Unpacked beside the designs, then moved into place, so the canvas never lists half a design.
+    const staging = path.join(base, `.import-${randomBytes(4).toString("hex")}`);
+    try {
+      for (const file of own) {
+        const target = path.join(staging, ...file.rel);
+        await mkdir(path.dirname(target), { recursive: true });
+        await writeFile(target, file.data);
+      }
+      await rename(staging, designDir(root, slug));
+    } catch (error) {
+      await rm(staging, { recursive: true, force: true });
+      throw error;
+    }
+
+    return { slug, title: manifest.data.title, kept };
+  });
+}
+
+function slugify(title: string): string {
+  const slug = title.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return slug || "design";
+}
+
+/** The design's first artboard, as a preview of it. */
+export async function coverView(root: string, slug: string): Promise<ArtboardView | null> {
+  const read = await readManifest(root, slug);
+  const first = read.manifest?.artboards[0];
+  return first ? renderArtboard(root, slug, first) : null;
 }
 
 export async function listVersion(root: string): Promise<string> {

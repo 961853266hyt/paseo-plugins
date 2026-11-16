@@ -3,12 +3,14 @@ import { initCanvas } from "./shared/rpc";
 import { label } from "./client/i18n";
 import { PLUGIN_ICON_SVG } from "./client/icons";
 import { DesignPanel } from "./client/panel";
+import { HOME_SCREEN_ID, homeScreen, HomeSidebarItem } from "./client/home";
+import { PANEL_ID } from "./client/open";
 import { startDesign } from "./client/start";
-
-const PANEL_ID = "design";
 
 export default function contribute(client: PluginClientContext) {
   const cleanups = [
+    client.addScreen({ id: HOME_SCREEN_ID, title: label("homeTitle"), Component: homeScreen(client) }),
+    client.addSidebarHeaderItem({ id: HOME_SCREEN_ID, title: label("homeTitle"), Component: HomeSidebarItem }),
     client.addAgentPanel({
       id: PANEL_ID,
       title: label("panelTitle"),
@@ -41,6 +43,14 @@ export default function contribute(client: PluginClientContext) {
       keywords: ["design", "canvas", "prototype", "mockup", "设计", "画布"],
       context: "agent",
       onSelect: ({ openPanel }) => openPanel(PANEL_ID),
+    }),
+    client.addCommandCenterItem({
+      id: "open-home",
+      title: label("openHome"),
+      icon: { svg: PLUGIN_ICON_SVG },
+      keywords: ["design", "designs", "home", "设计", "首页"],
+      context: "global",
+      onSelect: ({ openScreen }) => openScreen({ screenId: HOME_SCREEN_ID }),
     }),
   ];
   return () => {

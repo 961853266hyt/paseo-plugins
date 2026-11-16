@@ -4,10 +4,14 @@ import {
   deleteComment,
   deleteDesign,
   editText,
+  exportDesign,
+  importDesign,
   renameDesign,
   getDesign,
+  getCover,
   getDesignVersion,
   initCanvas,
+  listHome,
   listDesigns,
   markCommentsSent,
   moveArtboard,
@@ -16,7 +20,7 @@ import {
   updateComment,
 } from "../shared/rpc";
 import * as store from "./store";
-import { workspaceRoot } from "./workspace";
+import { listWorkspaces, workspaceRoot } from "./workspace";
 
 export function registerHandlers(server: PluginServerContext, now: () => number = Date.now): void {
   server.handle(listDesigns, async ({ workspaceId }, { paseo }) => {
@@ -75,6 +79,15 @@ export function registerHandlers(server: PluginServerContext, now: () => number 
     store.trashDesign(await workspaceRoot(paseo, workspaceId), slug, now()),
   );
 
+  server.handle(exportDesign, async ({ workspaceId, slug }, { paseo }) => {
+    const { fileName, zip } = await store.exportDesign(await workspaceRoot(paseo, workspaceId), slug);
+    return { fileName, base64: zip.toString("base64") };
+  });
+
+  server.handle(importDesign, async ({ workspaceId, base64 }, { paseo }) =>
+    store.importDesign(await workspaceRoot(paseo, workspaceId), Buffer.from(base64, "base64")),
+  );
+
   server.handle(editText, async ({ workspaceId, slug, artboardId, target, before, after, expected }, { paseo }) =>
     store.editText(await workspaceRoot(paseo, workspaceId), slug, artboardId, target, before, after, expected),
   );
@@ -82,6 +95,31 @@ export function registerHandlers(server: PluginServerContext, now: () => number 
   server.handle(saveTweaks, async ({ workspaceId, slug, values }, { paseo }) =>
     store.saveTweaks(await workspaceRoot(paseo, workspaceId), slug, values),
   );
+
+  server.handle(listHome, async (_input, { paseo }) => {
+    const workspaces = await listWorkspaces(paseo);
+    const projects = await Promise.all(
+      workspaces.map(async (workspace) => {
+        const root = workspace.directory;
+        const [slugs, agents]: [string[], Record<string, string>] = (await store.isInitialized(root))
+          ? await Promise.all([store.listSlugs(root), store.readDesignAgents(root)])
+          : [[], {}];
+        const designs = await Promise.all(
+          slugs.map(async (slug) => ({
+            ...(await store.summarize(root, slug)),
+            updatedAt: await store.designUpdatedAt(root, slug),
+            agentId: agents[slug] ?? null,
+          })),
+        );
+        return { workspaceId: workspace.id, directory: root, project: workspace.project, workspace: workspace.name, designs };
+      }),
+    );
+    return { projects };
+  });
+
+  server.handle(getCover, async ({ workspaceId, slug }, { paseo }) => ({
+    cover: await store.coverView(await workspaceRoot(paseo, workspaceId), slug),
+  }));
 
   server.handle(initCanvas, async ({ workspaceId }, { paseo }) => ({
     created: await store.initCanvas(await workspaceRoot(paseo, workspaceId)),

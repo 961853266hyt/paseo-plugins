@@ -21,6 +21,7 @@ import {
   type TweakValues,
   usesVariable,
 } from "../shared/tweaks";
+import { fileToBase64 } from "./files";
 import { icon, type IconName } from "./icons";
 import {
   bounds,
@@ -71,6 +72,12 @@ export interface CanvasApi {
   renameDesign(slug: string, title: string): Promise<void>;
   /** Moves a design to design/.trash/ and returns where it went. */
   deleteDesign(slug: string): Promise<string>;
+  /** The design as a zip to share, and the name to save it under. */
+  exportDesign(slug: string): Promise<{ fileName: string; base64: string }>;
+  /** Unpacks an exported design (a zip, in base64) into this workspace. */
+  importDesign(base64: string): Promise<{ slug: string; title: string; kept: string[] }>;
+  /** Asks the user for a zip to import; null when they cancel. */
+  pickZip(): Promise<Blob | null>;
 }
 
 export interface CanvasOptions {
@@ -87,6 +94,10 @@ export interface CanvasOptions {
 export interface CanvasHandle {
   setTheme(colors: ThemeColors): void;
   setAgentStatus(status: AgentStatus): void;
+  /** Shows this design. */
+  select(slug: string): void;
+  /** Shows the next design that appears beside `known`, as after asking the agent for one. */
+  expectNew(known: readonly string[]): void;
   destroy(): void;
 }
 
@@ -292,10 +303,13 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
   /** The design whose name is being edited in the menu, and the one asking to be deleted. */
   let menuRenaming: string | null = null;
   let menuAsking: string | null = null;
+  /** The actions of one design, opened from its row's ⋯ button. */
+  let rowMenu: { slug: string; node: HTMLDivElement; anchor: HTMLElement } | null = null;
   let popover: { state: Popover; node: HTMLDivElement } | null = null;
   let agentStatus: AgentStatus = null;
   let sending = false;
-  let expectingNew = false;
+  /** While the agent draws a new design: the designs there were before, so the new one can be shown. */
+  let expectingNew: Set<string> | null = null;
   let spaceHeld = false;
   let banner: HTMLDivElement | null = null;
   let empty: HTMLDivElement | null = null;
@@ -1344,7 +1358,8 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
   }
 
   // ---- Design menu -------------------------------------------------------------------------
-  // One row per design, by its name. Hovering a row shows rename and delete; both happen in the row.
+  // One row per design, by its name. Hovering a row shows ⋯ with rename, export and delete;
+  // renaming and confirming a delete happen in the row.
 
   function openMenu(): void {
     closeMenu();
@@ -1367,6 +1382,7 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
   }
 
   function closeMenu(): void {
+    closeRowMenu();
     if (!menu) return;
     menu.remove();
     menu = null;
@@ -1385,6 +1401,7 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
     const item = el("div", "dc-menu-item");
     item.dataset.design = summary.slug;
     item.classList.toggle("dc-current", current);
+    item.classList.toggle("dc-open", rowMenu?.slug === summary.slug);
     const mark = el("span", "dc-menu-icon");
 
     // Deleting asks in the row: the name becomes the question, the actions its answers.
@@ -1446,15 +1463,111 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
       void selectDesign(summary.slug);
     });
     const actions = el("span", "dc-menu-actions");
-    actions.append(
-      button(t("renameDesign"), "edit", () => startRename(summary.slug), "dc-btn dc-icon dc-act"),
-      button(t("deleteDesign"), "trash", () => {
-        menuAsking = summary.slug;
-        renderMenu();
-      }, "dc-btn dc-icon dc-act dc-act-danger"),
-    );
+    const more = button(t("moreActions"), "more", () => openRowMenu(summary, more), "dc-btn dc-icon dc-act dc-more");
+    more.setAttribute("aria-haspopup", "menu");
+    more.setAttribute("aria-expanded", String(rowMenu?.slug === summary.slug));
+    if (rowMenu?.slug === summary.slug) rowMenu.anchor = more;
+    actions.append(more);
     item.append(pick, actions);
     return item;
+  }
+
+  function openRowMenu(summary: DesignSummary, anchor: HTMLElement): void {
+    if (rowMenu?.slug === summary.slug) {
+      closeRowMenu();
+      return;
+    }
+    closeRowMenu();
+    const node = el("div", "dc-menu dc-row-menu");
+    node.setAttribute("role", "menu");
+    node.dataset.testid = "design-canvas-row-menu";
+    node.addEventListener("pointerdown", (event) => event.stopPropagation());
+    node.addEventListener("keydown", rowMenuKey);
+    const entry = (label: string, iconName: IconName, onPick: () => void, danger = false) => {
+      const pick = el("button", "dc-menu-pick");
+      pick.type = "button";
+      pick.setAttribute("role", "menuitem");
+      const mark = el("span", "dc-menu-icon");
+      mark.innerHTML = icon(iconName);
+      pick.append(mark, el("span", "dc-menu-title", label));
+      pick.addEventListener("click", (event) => {
+        event.stopPropagation();
+        closeRowMenu();
+        onPick();
+      });
+      const row = el("div", danger ? "dc-menu-item dc-menu-danger" : "dc-menu-item");
+      row.append(pick);
+      return row;
+    };
+    node.append(
+      entry(t("renameDesign"), "edit", () => startRename(summary.slug)),
+      entry(t("exportDesign"), "download", () => void exportFromMenu(summary)),
+      el("div", "dc-menu-sep"),
+      entry(t("deleteConfirm"), "trash", () => {
+        menuAsking = summary.slug;
+        renderMenu();
+      }, true),
+    );
+    root.append(node);
+    rowMenu = { slug: summary.slug, node, anchor };
+    // Beside the design menu, level with the row; over it when there is no room on the right.
+    const box = root.getBoundingClientRect();
+    const at = anchor.getBoundingClientRect();
+    const beside = (menu?.getBoundingClientRect().right ?? at.right) - box.left + 4;
+    const width = node.offsetWidth;
+    node.style.left = `${beside + width <= box.width ? beside : Math.max(4, at.right - box.left - width)}px`;
+    node.style.top = `${Math.min(at.top - box.top - 4, Math.max(4, box.height - node.offsetHeight - 4))}px`;
+    const row = anchor.closest(".dc-menu-item");
+    row?.classList.add("dc-open");
+    anchor.setAttribute("aria-expanded", "true");
+    node.querySelector<HTMLElement>(".dc-menu-pick")?.focus();
+  }
+
+  function closeRowMenu(): void {
+    if (!rowMenu) return;
+    rowMenu.node.remove();
+    rowMenu.anchor.closest(".dc-menu-item")?.classList.remove("dc-open");
+    rowMenu.anchor.setAttribute("aria-expanded", "false");
+    rowMenu = null;
+  }
+
+  function rowMenuKey(event: KeyboardEvent): void {
+    if (!rowMenu) return;
+    event.stopPropagation();
+    const items = [...rowMenu.node.querySelectorAll<HTMLElement>(".dc-menu-pick")];
+    const at = items.indexOf(doc.activeElement as HTMLElement);
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      items[(at + (event.key === "ArrowDown" ? 1 : items.length - 1)) % items.length]?.focus();
+    } else if (event.key === "Escape" || event.key === "ArrowLeft") {
+      event.preventDefault();
+      const anchor = rowMenu.anchor;
+      closeRowMenu();
+      anchor.focus();
+    }
+  }
+
+  async function exportFromMenu(summary: DesignSummary): Promise<void> {
+    const view = win;
+    if (!view) return;
+    try {
+      const { fileName, base64 } = await api.exportDesign(summary.slug);
+      const binary = view.atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      const url = view.URL.createObjectURL(new view.Blob([bytes], { type: "application/zip" }));
+      const link = doc.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      link.style.display = "none";
+      root.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => view.URL.revokeObjectURL(url), 30_000);
+      toast(t("designExported", { file: fileName }));
+    } catch (error) {
+      fail(error);
+    }
   }
 
   function startRename(target: string): void {
@@ -1478,10 +1591,42 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
       closeMenu();
       openNewDesign();
     });
-    // In a row like the designs', so its hover spans the same width.
-    const row = el("div", "dc-menu-item");
-    row.append(add);
-    menu.append(row);
+    const load = el("button", "dc-menu-pick dc-menu-new");
+    load.type = "button";
+    load.setAttribute("role", "menuitem");
+    load.dataset.testid = "design-canvas-import";
+    const arrow = el("span", "dc-menu-icon");
+    arrow.innerHTML = icon("upload");
+    load.append(arrow, el("span", "dc-menu-title", t("importDesign")));
+    load.addEventListener("click", () => {
+      closeMenu();
+      void importFromFile();
+    });
+    // In rows like the designs', so their hover spans the same width.
+    for (const action of [add, load]) {
+      const row = el("div", "dc-menu-item");
+      row.append(action);
+      menu.append(row);
+    }
+  }
+
+  let importing = false;
+  async function importFromFile(): Promise<void> {
+    if (importing) return;
+    const file = await api.pickZip();
+    if (!file) return;
+    importing = true;
+    try {
+      const { slug: imported, title, kept } = await api.importDesign(await fileToBase64(file));
+      toast(kept.length ? t("designImportedKept", { title, files: kept.join(", ") }) : t("designImported", { title }));
+      await loadList();
+      hideEmpty();
+      await selectDesign(imported);
+    } catch (error) {
+      fail(error);
+    } finally {
+      importing = false;
+    }
   }
 
   async function renameFromMenu(summary: DesignSummary, title: string): Promise<void> {
@@ -1529,7 +1674,8 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
       }
     } else if (event.key === "Escape") {
       event.preventDefault();
-      if (menuAsking) {
+      if (rowMenu) closeRowMenu();
+      else if (menuAsking) {
         menuAsking = null;
         renderMenu();
       } else {
@@ -1565,7 +1711,7 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
       submit.disabled = true;
       try {
         await api.startDesign(brief);
-        expectingNew = true;
+        expectingNew = new Set(list?.designs.map((summary) => summary.slug) ?? []);
         closeModal();
         toast(t("startedDesign"));
         area.value = "";
@@ -1583,7 +1729,7 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
       } else if (event.key === "Escape" && inModal) closeModal();
     });
     if (inModal) row.append(el("span", "dc-hint", t("submitHint")), button(t("cancel"), null, closeModal), submit);
-    else row.append(el("span", "dc-hint", t("submitHint")), submit);
+    else row.append(el("span", "dc-hint", t("submitHint")), button(t("importDesign"), "upload", () => void importFromFile()), submit);
     card.append(area, row);
     setTimeout(() => area.focus(), 0);
     return card;
@@ -1648,7 +1794,6 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
   async function loadList(): Promise<void> {
     const next = await api.listDesigns();
     if (destroyed) return;
-    const before = new Set(list?.designs.map((summary) => summary.slug) ?? []);
     const changed = list?.version !== next.version;
     list = next;
     if (changed) renderPicker();
@@ -1659,9 +1804,10 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
       return;
     }
     hideEmpty();
-    const added = slugs.find((candidate) => !before.has(candidate));
-    if (expectingNew && added) {
-      expectingNew = false;
+    const known = expectingNew;
+    const added = known ? slugs.find((candidate) => !known.has(candidate)) : undefined;
+    if (added) {
+      expectingNew = null;
       await selectDesign(added);
     } else if (!slug || !slugs.includes(slug)) {
       await selectDesign(slugs[0] ?? null);
@@ -1859,7 +2005,10 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
 
   // A press anywhere else, or into an artboard (which takes focus), closes the design menu.
   const closeMenuOutside = (event: PointerEvent) => {
-    if (menu && !menu.contains(event.target as Node) && !picker.contains(event.target as Node)) closeMenu();
+    const target = event.target as Node;
+    if (rowMenu && !rowMenu.node.contains(target) && !rowMenu.anchor.contains(target)) closeRowMenu();
+    if (rowMenu?.node.contains(target)) return;
+    if (menu && !menu.contains(target) && !picker.contains(target)) closeMenu();
   };
   doc.addEventListener("pointerdown", closeMenuOutside, true);
   win.addEventListener("blur", closeMenu);
@@ -1908,6 +2057,14 @@ export function mountCanvas(options: CanvasOptions): CanvasHandle {
       agentStatus = next;
       renderStatus();
       renderSide();
+    },
+    select(next) {
+      expectingNew = null;
+      void selectDesign(next);
+    },
+    expectNew(known) {
+      expectingNew = new Set(known);
+      void loadList().catch(() => {});
     },
     destroy() {
       destroyed = true;

@@ -16,3 +16,34 @@ export async function workspaceRoot(paseo: PaseoApi, workspaceId: string): Promi
   cache.set(workspaceId, { directory, at: Date.now() });
   return directory;
 }
+
+export interface WorkspaceEntry {
+  id: string;
+  directory: string;
+  project: string;
+  name: string;
+}
+
+/** The workspaces on this host that the user can see, most recently active first. */
+export async function listWorkspaces(paseo: PaseoApi): Promise<WorkspaceEntry[]> {
+  const out: WorkspaceEntry[] = [];
+  const seen = new Set<string>();
+  let cursor: string | undefined;
+  for (let page = 0; page < 10; page += 1) {
+    const result = await paseo.workspaces.list({
+      sort: [{ key: "activity_at", direction: "desc" }],
+      page: { limit: 200, ...(cursor ? { cursor } : {}) },
+    });
+    for (const workspace of result.entries) {
+      if (workspace.archivingAt || workspace.background) continue;
+      const directory = workspace.workspaceDirectory ?? workspace.projectRootPath;
+      if (!directory || seen.has(directory)) continue;
+      seen.add(directory);
+      cache.set(workspace.id, { directory, at: Date.now() });
+      out.push({ id: workspace.id, directory, project: workspace.projectDisplayName, name: workspace.name });
+    }
+    cursor = result.pageInfo.nextCursor ?? undefined;
+    if (!result.pageInfo.hasMore || !cursor) break;
+  }
+  return out;
+}

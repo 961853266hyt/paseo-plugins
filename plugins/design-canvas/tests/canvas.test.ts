@@ -70,6 +70,9 @@ function fakeApi(view: DesignView | null): CanvasApi & { sent: string[] } {
     startDesign: vi.fn(async () => {}),
     renameDesign: vi.fn(async () => {}),
     deleteDesign: vi.fn(async (slug: string) => `design/.trash/${slug}-2026-11-05T00-00-00Z`),
+    exportDesign: vi.fn(async (slug: string) => ({ fileName: `${slug}.zip`, base64: "UEsFBgAAAAAAAAAAAAAAAAAAAAAAAA==" })),
+    importDesign: vi.fn(async () => ({ slug: "pricing", title: "Pricing", kept: [] as string[] })),
+    pickZip: vi.fn(async () => new Blob(["zip"])),
   };
 }
 
@@ -116,6 +119,27 @@ describe("canvas", () => {
     expect(listDesigns.mock.calls.length).toBeGreaterThan(1);
     expect(host.querySelectorAll('[data-testid="design-canvas-new"]')).toHaveLength(1);
     expect((host.querySelector('[data-testid="design-canvas-new"] textarea') as HTMLTextAreaElement).value).toBe("A pricing page with");
+  });
+
+  test("from the home screen: shows the design it is handed, then the new one an agent draws", async () => {
+    const summary = (slug: string) => ({ slug, title: slug, kind: "prototype" as const, artboards: 1, openComments: 0, error: null });
+    let slugs = ["alpha", "beta"];
+    const api = fakeApi(design([]));
+    api.listDesigns = async () => ({ initialized: true, designs: slugs.map(summary), version: slugs.join() });
+    const getDesign = vi.spyOn(api, "getDesign");
+    mount(api);
+    await settle();
+    expect(getDesign).toHaveBeenLastCalledWith("alpha");
+    handle!.select("beta");
+    await settle();
+    expect(getDesign).toHaveBeenLastCalledWith("beta");
+    handle!.expectNew(["alpha", "beta"]);
+    await settle();
+    expect(getDesign).toHaveBeenLastCalledWith("beta");
+    slugs = ["alpha", "beta", "gamma"];
+    handle!.expectNew(["alpha", "beta"]);
+    await settle();
+    expect(getDesign).toHaveBeenLastCalledWith("gamma");
   });
 
   test("shows each artboard in a sandboxed frame with the runtime and CSP", async () => {
@@ -276,19 +300,71 @@ describe("design menu", () => {
 
   test("lists each design by its name only, with new design last", async () => {
     const { menu } = await openMenu();
-    expect([...menu.querySelectorAll(".dc-menu-title")].map((n) => n.textContent)).toEqual(["Pricing", "newDesign"]);
+    expect([...menu.querySelectorAll(".dc-menu-title")].map((n) => n.textContent)).toEqual(["Pricing", "newDesign", "importDesign"]);
     expect(menu.querySelector(".dc-menu-new .dc-menu-icon svg")).not.toBeNull();
   });
 
-  test("renames in the row: Enter keeps the name, Escape puts it back", async () => {
+  function pickFromMore(host: HTMLElement, menu: HTMLElement, index: number) {
+    (menu.querySelector(".dc-more") as HTMLButtonElement).click();
+    const rowMenu = host.querySelector('[data-testid="design-canvas-row-menu"]') as HTMLElement;
+    const pick = rowMenu.querySelectorAll(".dc-menu-pick")[index] as HTMLButtonElement;
+    // A real press: pointerdown first, which must not close the design menu under it.
+    pick.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    expect(host.querySelector('[data-testid="design-canvas-row-menu"]')).not.toBeNull();
+    pick.click();
+    expect(host.querySelector('[data-testid="design-canvas-row-menu"]')).toBeNull();
+  }
+
+  test("each row has one ⋯ button with rename, export and delete", async () => {
+    const { host, menu } = await openMenu();
+    expect(menu.querySelectorAll(".dc-menu-actions .dc-btn")).toHaveLength(1);
+    const more = menu.querySelector(".dc-more") as HTMLButtonElement;
+    more.click();
+    const rowMenu = host.querySelector('[data-testid="design-canvas-row-menu"]') as HTMLElement;
+    expect([...rowMenu.querySelectorAll(".dc-menu-title")].map((n) => n.textContent)).toEqual(["renameDesign", "exportDesign", "deleteConfirm"]);
+    expect(more.getAttribute("aria-expanded")).toBe("true");
+    more.click();
+    expect(host.querySelector('[data-testid="design-canvas-row-menu"]')).toBeNull();
+  });
+
+  test("exports the design as a zip download", async () => {
+    const { api, host, menu } = await openMenu();
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    pickFromMore(host, menu, 1);
+    await settle();
+    expect(api.exportDesign).toHaveBeenCalledWith("pricing");
+    expect(click).toHaveBeenCalled();
+    expect(host.querySelector(".dc-toast")?.textContent).toContain("pricing.zip");
+    click.mockRestore();
+  });
+
+  test("imports a picked zip from the menu and shows the imported design", async () => {
+    const { api, host, menu } = await openMenu();
+    (menu.querySelector('[data-testid="design-canvas-import"]') as HTMLButtonElement).click();
+    expect(host.querySelector('[data-testid="design-canvas-menu"]')).toBeNull();
+    await settle();
+    expect(api.pickZip).toHaveBeenCalled();
+    expect(api.importDesign).toHaveBeenCalledWith(btoa("zip"));
+    expect(host.querySelector(".dc-toast")?.textContent).toContain("designImported");
+  });
+
+  test("a cancelled pick imports nothing", async () => {
     const { api, menu } = await openMenu();
-    (menu.querySelector(".dc-act") as HTMLButtonElement).click();
+    vi.mocked(api.pickZip).mockResolvedValueOnce(null);
+    (menu.querySelector('[data-testid="design-canvas-import"]') as HTMLButtonElement).click();
+    await settle();
+    expect(api.importDesign).not.toHaveBeenCalled();
+  });
+
+  test("renames in the row: Enter keeps the name, Escape puts it back", async () => {
+    const { api, host, menu } = await openMenu();
+    pickFromMore(host, menu, 0);
     let field = menu.querySelector(".dc-menu-field") as HTMLInputElement;
     field.value = "Nope";
     field.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     expect(api.renameDesign).not.toHaveBeenCalled();
     expect(menu.querySelector(".dc-menu-field")).toBeNull();
-    (menu.querySelector(".dc-act") as HTMLButtonElement).click();
+    pickFromMore(host, menu, 0);
     field = menu.querySelector(".dc-menu-field") as HTMLInputElement;
     field.value = "  Pricing v2 ";
     field.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
@@ -297,8 +373,8 @@ describe("design menu", () => {
   });
 
   test("deletes after the row asks", async () => {
-    const { api, menu } = await openMenu();
-    (menu.querySelector(".dc-act-danger") as HTMLButtonElement).click();
+    const { api, host, menu } = await openMenu();
+    pickFromMore(host, menu, 2);
     const asking = menu.querySelector(".dc-asking") as HTMLElement;
     expect(asking.textContent).toContain("deleteDesignTitle");
     expect(api.deleteDesign).not.toHaveBeenCalled();

@@ -51,6 +51,26 @@ describe("canvas marker", () => {
   });
 });
 
+describe("home", () => {
+  test("remembers the agent of each design and keeps the rest of canvas.json", async () => {
+    await store.initCanvas(root);
+    expect(await store.readDesignAgents(root)).toEqual({});
+    await Promise.all([store.rememberDesignAgent(root, "pricing", "a1"), store.rememberDesignAgent(root, "onboarding", "a2")]);
+    expect(await store.readDesignAgents(root)).toEqual({ pricing: "a1", onboarding: "a2" });
+    expect(await store.isInitialized(root)).toBe(true);
+    expect(JSON.parse(await readFile(path.join(root, "design", "canvas.json"), "utf8")).version).toBe(1);
+  });
+
+  test("gives the first artboard as the cover and the latest change time", async () => {
+    await makeDesign("pricing", "<!doctype html><p>Cover</p>");
+    const cover = await store.coverView(root, "pricing");
+    expect(cover?.id).toBe("desktop");
+    expect(cover?.html).toContain("Cover");
+    expect(await store.designUpdatedAt(root, "pricing")).toBeGreaterThan(0);
+    expect(await store.coverView(root, "missing")).toBeNull();
+  });
+});
+
 describe("designs", () => {
   test("lists folders with a design.json, and reports a broken manifest", async () => {
     await makeDesign("pricing");
