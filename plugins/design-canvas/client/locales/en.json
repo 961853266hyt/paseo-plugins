@@ -94,5 +94,8 @@
   "designImported": "Imported “{{title}}”",
   "designImportedKept": "Imported “{{title}}”. Kept this workspace's own {{files}}, which differ from the design's copy.",
   "highFidelity": "High fidelity",
-  "briefPlaceholder": "What do you want to design?"
+  "briefPlaceholder": "What do you want to design?",
+  "searchProjects": "Search projects",
+  "add": "Add",
+  "dropZipOnly": "Drop a .zip exported from a design canvas."
 }

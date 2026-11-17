@@ -3,7 +3,7 @@
 ## Unreleased
 
 - A **Design** entry in the sidebar opens a home screen. The left side starts a new design: tabs
-  for prototype, slides or other, a wireframe or high-fidelity choice for prototypes, the project,
+  for prototype or other, a wireframe or high-fidelity choice for prototypes, the project,
   and what to design; **Create** starts a new agent on it and opens its chat and canvas. The right side shows recent
   designs from every project as live thumbnails of their first artboard; opening one goes to the
   agent that drew it, or the latest one working in that folder.
@@ -12,7 +12,8 @@
   **Export**: it downloads the design as `<name>.zip`, laid out as under `design/` (the design's
   folder, plus shared files its pages use, such as `systems/`). Unzipped into another workspace's
   `design/` folder it shows up on that canvas; its pages also open in a browser as they are.
-- **Import design…** (in the design menu, on the empty canvas and on the home screen) unpacks
+- **Import design…** (in the design menu, on the empty canvas, and on the home screen under the
+  composer's **+** or by dropping the zip anywhere on it) unpacks
   such a zip into the workspace's `design/` folder and opens it. A taken name gets `-2`, `-3`…;
   shared files the workspace lacks are added, and ones it has with other contents are kept and
   named in the notice. Entries that would leave the folder, links that lead out of `design/`, and

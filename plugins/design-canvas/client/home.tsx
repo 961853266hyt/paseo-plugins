@@ -8,11 +8,11 @@ import {
 } from "@getpaseo/plugin/client";
 import { Icon, SidebarRow, useToast } from "@getpaseo/plugin/client/ui";
 import { useQuery } from "@tanstack/react-query";
-import { type ComponentType, useMemo, useState } from "react";
+import { type ComponentType, useEffect, useMemo, useRef, useState } from "react";
 import { Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import type { DesignKind } from "../shared/design";
 import { getCover, type HomeDesign, type HomeProject, importDesign, initCanvas, listHome } from "../shared/rpc";
-import { canPickFiles, fileToBase64, pickZip } from "./files";
+import { canPickFiles, fileToBase64, pickZip, watchFileDrops } from "./files";
 import { messages } from "./i18n";
 import { PLUGIN_ICON_SVG } from "./icons";
 import { createDesign, openDesign } from "./open";
@@ -20,9 +20,9 @@ import { Thumbnail } from "./thumbnail";
 
 export const HOME_SCREEN_ID = "home";
 
-type Tab = "prototype" | "slides" | "other";
+type Tab = "prototype" | "other";
 type Fidelity = "wireframe" | "high";
-const TABS: Tab[] = ["prototype", "slides", "other"];
+const TABS: Tab[] = ["prototype", "other"];
 const CARD_MIN = 230;
 const GAP = 20;
 const THUMB_RATIO = 10 / 16;
@@ -116,6 +116,10 @@ function Home({ theme, layout, navigation, client }: PluginScreenProps & { clien
   const [brief, setBrief] = useState("");
   const [picked, setPicked] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
+  const [query, setQuery] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [dropping, setDropping] = useState(false);
+  const menuOpen = picking || adding;
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<string | null>(null);
@@ -157,9 +161,13 @@ function Home({ theme, layout, navigation, client }: PluginScreenProps & { clien
     });
   }
 
-  async function importZip() {
+  async function importZip(dropped?: File | null) {
     if (!target || busy) return;
-    const file = await pickZip();
+    if (dropped === null) {
+      setError(t("dropZipOnly"));
+      return;
+    }
+    const file = dropped ?? (await pickZip());
     if (!file) return;
     void run("import", async () => {
       const { slug, title, kept } = await callImportDesign({ workspaceId: target.workspaceId, base64: await fileToBase64(file) });
@@ -184,12 +192,28 @@ function Home({ theme, layout, navigation, client }: PluginScreenProps & { clien
   }
 
   const styles = useMemo(() => makeStyles(colors, compact), [colors, compact]);
+
+  // A zip dropped anywhere on the screen imports into the picked project.
+  const screenRef = useRef<View>(null);
+  const importRef = useRef(importZip);
+  importRef.current = importZip;
+  useEffect(() => {
+    const host = screenRef.current as unknown as HTMLElement | null;
+    if (!canPickFiles || !host?.addEventListener) return;
+    return watchFileDrops(host, {
+      enter: () => setDropping(true),
+      leave: () => setDropping(false),
+      drop: (file) => void importRef.current(file),
+    });
+  }, []);
   const now = Date.now();
 
   const canCreate = brief.trim() !== "" && target !== null && busy === null;
   const newDesign = (
-    <View style={styles.newColumn}>
-      <View style={styles.card}>
+    // React Native Web gives every view its own stacking context, so the open project menu
+    // lifts each ancestor above what follows it.
+    <View style={[styles.newColumn, menuOpen && styles.raised]}>
+      <View style={[styles.card, menuOpen && styles.raised]}>
         <View style={styles.tabs} accessibilityRole="tablist">
           {TABS.map((option) => {
             const on = option === tab;
@@ -228,81 +252,144 @@ function Home({ theme, layout, navigation, client }: PluginScreenProps & { clien
             </View>
           ) : null}
 
-          <View>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={t("project")}
-              disabled={projects.length === 0}
-              onPress={() => setPicking((value) => !value)}
-              style={(state) => [styles.select, ((state as PressState).hovered || picking) && styles.selectHover]}
-            >
-              <Icon name="Folder" size={14} color={colors.foregroundMuted} />
-              <Text style={styles.selectText} numberOfLines={1}>
-                {target ? projectLabel(target) : home.isLoading ? "…" : t("noProjects")}
-              </Text>
-              <Icon name={picking ? "ChevronUp" : "ChevronDown"} size={14} color={colors.foregroundMuted} />
-            </Pressable>
-            {picking ? (
-              <ScrollView style={styles.options} contentContainerStyle={{ padding: 4 }}>
-                {projects.map((project) => (
+          <View style={[styles.composer, menuOpen && styles.composerRaised]}>
+            <TextInput
+              value={brief}
+              onChangeText={setBrief}
+              multiline
+              placeholder={t("briefPlaceholder")}
+              placeholderTextColor={colors.foregroundMuted}
+              accessibilityLabel={t("briefPlaceholder")}
+              style={styles.brief}
+              onKeyPress={(event) => {
+                const key = event.nativeEvent as { key: string; metaKey?: boolean; ctrlKey?: boolean };
+                if (key.key === "Enter" && (key.metaKey || key.ctrlKey)) create();
+              }}
+            />
+            <View style={styles.composerBar}>
+              <View style={styles.barLeft}>
+              {canPickFiles ? (
+                <View>
                   <Pressable
-                    key={project.workspaceId}
-                    onPress={() => {
-                      setPicked(project.workspaceId);
-                      setPicking(false);
-                    }}
-                    style={(state) => [styles.option, ((state as PressState).hovered || project === target) && styles.hover]}
+                    accessibilityRole="button"
+                    accessibilityLabel={t("add")}
+                    disabled={busy !== null}
+                    onPress={() => setAdding((value) => !value)}
+                    style={(state) => [styles.plus, ((state as PressState).hovered || adding) && styles.hover]}
                   >
-                    <Text style={styles.optionText} numberOfLines={1}>
-                      {projectLabel(project)}
-                    </Text>
+                    <Icon name={busy === "import" ? "Loader" : "Plus"} size={16} color={colors.foregroundMuted} />
                   </Pressable>
-                ))}
-              </ScrollView>
-            ) : null}
+                  {adding ? (
+                    <>
+                      <Pressable accessibilityLabel={t("close")} onPress={() => setAdding(false)} style={styles.backdrop} />
+                      <View style={[styles.popover, styles.popoverNarrow]}>
+                        <View style={{ padding: 4 }}>
+                          <Pressable
+                            accessibilityRole="menuitem"
+                            disabled={!target}
+                            onPress={() => {
+                              setAdding(false);
+                              void importZip();
+                            }}
+                            style={(state) => [styles.option, (state as PressState).hovered && styles.hover]}
+                          >
+                            <Icon name="Upload" size={14} color={colors.foregroundMuted} />
+                            <Text style={styles.optionText} numberOfLines={1}>
+                              {t("importDesign")}
+                            </Text>
+                          </Pressable>
+                        </View>
+                      </View>
+                    </>
+                  ) : null}
+                </View>
+              ) : null}
+              <View style={styles.anchor}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={t("project")}
+                  disabled={projects.length === 0}
+                  onPress={() => {
+                    setQuery("");
+                    setPicking((value) => !value);
+                  }}
+                  style={(state) => [styles.chip, ((state as PressState).hovered || picking) && styles.hover]}
+                >
+                  <Icon name="Folder" size={14} color={colors.foregroundMuted} />
+                  <Text style={styles.chipText} numberOfLines={1}>
+                    {target ? target.project : home.isLoading ? "…" : t("noProjects")}
+                  </Text>
+                  <Icon name="ChevronDown" size={13} color={colors.foregroundMuted} />
+                </Pressable>
+                {picking ? (
+                  <>
+                    <Pressable accessibilityLabel={t("close")} onPress={() => setPicking(false)} style={styles.backdrop} />
+                    <View style={styles.popover}>
+                      {projects.length > 6 ? (
+                        <TextInput
+                          value={query}
+                          onChangeText={setQuery}
+                          autoFocus
+                          placeholder={t("searchProjects")}
+                          placeholderTextColor={colors.foregroundMuted}
+                          style={styles.search}
+                        />
+                      ) : null}
+                      <ScrollView style={{ maxHeight: 280 }} contentContainerStyle={{ padding: 4 }}>
+                        {projects
+                          .filter((project) => !query.trim() || projectLabel(project).toLowerCase().includes(query.trim().toLowerCase()))
+                          .map((project) => {
+                            const on = project === target;
+                            return (
+                              <Pressable
+                                key={project.workspaceId}
+                                accessibilityRole="menuitem"
+                                onPress={() => {
+                                  setPicked(project.workspaceId);
+                                  setPicking(false);
+                                }}
+                                style={(state) => [styles.option, (state as PressState).hovered && styles.hover]}
+                              >
+                                <Text style={styles.optionText} numberOfLines={1}>
+                                  {project.project}
+                                  {project.workspace !== project.project ? <Text style={styles.optionMuted}>{`  ${project.workspace}`}</Text> : null}
+                                </Text>
+                                {on ? <Icon name="Check" size={14} color={colors.foreground} /> : null}
+                              </Pressable>
+                            );
+                          })}
+                      </ScrollView>
+                    </View>
+                  </>
+                ) : null}
+              </View>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t("create")}
+                disabled={!canCreate}
+                onPress={create}
+                style={(state) => [styles.send, !canCreate && styles.sendOff, canCreate && (state as PressState).hovered && styles.createHover]}
+              >
+                <Icon name={busy === "create" ? "Loader" : "ArrowUp"} size={16} color={canCreate || busy === "create" ? colors.accentForeground : colors.foregroundMuted} />
+              </Pressable>
+            </View>
           </View>
-
-          <TextInput
-            value={brief}
-            onChangeText={setBrief}
-            multiline
-            placeholder={t("briefPlaceholder")}
-            placeholderTextColor={colors.foregroundMuted}
-            accessibilityLabel={t("briefPlaceholder")}
-            style={styles.brief}
-            onKeyPress={(event) => {
-              const key = event.nativeEvent as { key: string; metaKey?: boolean; ctrlKey?: boolean };
-              if (key.key === "Enter" && (key.metaKey || key.ctrlKey)) create();
-            }}
-          />
-          <Pressable
-            accessibilityRole="button"
-            disabled={!canCreate}
-            onPress={create}
-            style={(state) => [styles.create, !canCreate && styles.disabled, canCreate && (state as PressState).hovered && styles.createHover]}
-          >
-            <Text style={styles.createText}>{busy === "create" ? "…" : t("create")}</Text>
-          </Pressable>
         </View>
       </View>
 
-      {canPickFiles ? (
-        <Pressable
-          accessibilityRole="button"
-          disabled={!target || busy !== null}
-          onPress={() => void importZip()}
-          style={(state) => [styles.importLink, (!target || busy !== null) && styles.disabled, (state as PressState).hovered && styles.hover]}
-        >
-          <Icon name="Upload" size={14} color={colors.foregroundMuted} />
-          <Text style={styles.importText}>{busy === "import" ? "…" : t("importDesign")}</Text>
-        </Pressable>
-      ) : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
     </View>
   );
 
   return (
-    <View style={styles.screen}>
+    <View ref={screenRef} style={styles.screen}>
+      {dropping ? (
+        <View pointerEvents="none" style={styles.dropOverlay}>
+          <Icon name="Upload" size={22} color={colors.foreground} />
+          <Text style={styles.dropText}>{target ? target.project : ""}</Text>
+        </View>
+      ) : null}
       {compact ? null : newDesign}
       <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.listPane}>
         {compact ? newDesign : null}
@@ -467,7 +554,7 @@ function makeStyles(colors: Colors, compact: boolean) {
       borderRightWidth: compact ? 0 : 1,
       borderColor: colors.border,
     },
-    card: { borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface1, overflow: "hidden" as const },
+    card: { borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface1 },
     tabs: { flexDirection: "row" as const, borderBottomWidth: 1, borderColor: colors.border, paddingHorizontal: 6 },
     tab: { flex: 1, height: 40, alignItems: "center" as const, justifyContent: "center" as const, borderBottomWidth: 2, borderColor: "transparent", marginBottom: -1 },
     tabOn: { borderColor: colors.foreground },
@@ -481,17 +568,6 @@ function makeStyles(colors: Colors, compact: boolean) {
     fidelityHover: { borderColor: colors.foregroundMuted },
     fidelityText: { color: colors.foregroundMuted, fontSize: 12, textAlign: "center" as const, paddingBottom: 2 },
     fidelityTextOn: { color: colors.foreground, fontWeight: "500" as const },
-    importLink: {
-      flexDirection: "row" as const,
-      alignItems: "center" as const,
-      alignSelf: "flex-start" as const,
-      gap: 6,
-      height: 30,
-      paddingHorizontal: 8,
-      marginLeft: -8,
-      borderRadius: 6,
-    },
-    importText: { color: colors.foregroundMuted, fontSize: 13 },
     listPane: { padding: compact ? 16 : 24, gap: 16 },
     heading: { color: colors.foreground, fontSize: 17, fontWeight: "600" as const },
     muted: { color: colors.foregroundMuted, fontSize: 13 },
@@ -499,37 +575,86 @@ function makeStyles(colors: Colors, compact: boolean) {
     kindText: { color: colors.foreground, fontSize: 13 },
     kindTextOn: { color: colors.surface0 },
     hover: { backgroundColor: colors.surface2 },
-    select: {
+    composer: { borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface0 },
+    composerRaised: { zIndex: 20 },
+    raised: { zIndex: 10 },
+    composerBar: { flexDirection: "row" as const, alignItems: "center" as const, justifyContent: "space-between" as const, padding: 6, paddingTop: 0 },
+    anchor: { flexShrink: 1, minWidth: 0 },
+    barLeft: { flexDirection: "row" as const, alignItems: "center" as const, gap: 2, flexShrink: 1, minWidth: 0 },
+    plus: { width: 28, height: 28, borderRadius: 8, alignItems: "center" as const, justifyContent: "center" as const },
+    popoverNarrow: { width: 200 },
+    dropOverlay: {
+      position: "absolute" as const,
+      top: 8,
+      left: 8,
+      right: 8,
+      bottom: 8,
+      zIndex: 50,
+      borderRadius: 14,
+      borderWidth: 2,
+      borderStyle: "dashed" as const,
+      borderColor: colors.accent,
+      backgroundColor: colors.surface0,
+      alignItems: "center" as const,
+      justifyContent: "center" as const,
+      gap: 8,
+    },
+    dropText: { color: colors.foreground, fontSize: 14, fontWeight: "500" as const },
+    chip: {
       flexDirection: "row" as const,
       alignItems: "center" as const,
-      gap: 8,
+      gap: 6,
+      height: 28,
+      paddingHorizontal: 8,
+      borderRadius: 8,
+      maxWidth: 200,
+    },
+    chipText: { flexShrink: 1, color: colors.foregroundMuted, fontSize: 13 },
+    backdrop: { position: "absolute" as const, top: -3000, left: -3000, right: -3000, bottom: -3000, zIndex: 20 },
+    popover: {
+      position: "absolute" as const,
+      top: 32,
+      left: 0,
+      zIndex: 21,
+      width: 264,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.surface1,
+      shadowColor: "#000",
+      shadowOpacity: 0.16,
+      shadowRadius: 18,
+      shadowOffset: { width: 0, height: 8 },
+      elevation: 8,
+    },
+    search: {
       height: 34,
+      margin: 4,
+      marginBottom: 0,
       paddingHorizontal: 10,
       borderRadius: 8,
-      borderWidth: 1,
-      borderColor: colors.border,
       backgroundColor: colors.surface0,
+      color: colors.foreground,
+      fontSize: 13,
     },
-    selectHover: { borderColor: colors.foregroundMuted },
-    selectText: { flex: 1, color: colors.foreground, fontSize: 13 },
-    options: { maxHeight: 240, marginTop: 4, borderRadius: 8, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface1 },
-    option: { height: 32, justifyContent: "center" as const, paddingHorizontal: 8, borderRadius: 6 },
-    optionText: { color: colors.foreground, fontSize: 13 },
+    option: { height: 32, flexDirection: "row" as const, alignItems: "center" as const, gap: 8, paddingHorizontal: 10, borderRadius: 7 },
+    optionText: { flex: 1, color: colors.foreground, fontSize: 13 },
+    optionMuted: { color: colors.foregroundMuted },
     brief: {
-      minHeight: compact ? 88 : 112,
-      padding: 10,
-      borderRadius: 8,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.surface0,
+      minHeight: compact ? 72 : 92,
+      paddingHorizontal: 12,
+      paddingTop: 10,
+      paddingBottom: 6,
+      borderWidth: 0,
+      outlineWidth: 0,
       color: colors.foreground,
       fontSize: 14,
       lineHeight: 20,
       textAlignVertical: "top" as const,
     },
-    create: { height: 36, borderRadius: 8, alignItems: "center" as const, justifyContent: "center" as const, backgroundColor: colors.accent },
+    send: { width: 30, height: 30, borderRadius: 15, alignItems: "center" as const, justifyContent: "center" as const, backgroundColor: colors.accent },
+    sendOff: { backgroundColor: colors.surface2 },
     createHover: { opacity: 0.9 },
-    createText: { color: colors.accentForeground, fontSize: 14, fontWeight: "600" as const },
     disabled: { opacity: 0.45 },
     error: { color: colors.statusDanger, fontSize: 13 },
     listHeader: { gap: 10 },

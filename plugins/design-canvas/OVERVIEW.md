@@ -1,6 +1,6 @@
 Design canvas is where humans and agents design together. Your agent draws designs as HTML artboards. You look at them side by side, move elements, fix text, tune values and point at what should change, and the agent revises. The designs are files in your workspace, so the agent that drew them can build them too.
 
-**Design** in the sidebar opens the home screen. Start a new design there: pick prototype (wireframe or high fidelity), slides or other, choose the project, describe what you want and press **Create**; a new agent, set up like the last one you started, draws it while its chat and canvas open. Beside that are your recent designs from every project; open one to go to its canvas, next to the agent that drew it.
+**Design** in the sidebar opens the home screen. Start a new design there: pick prototype (wireframe or high fidelity) or other, choose the project, describe what you want and press **Create**; a new agent, set up like the last one you started, draws it while its chat and canvas open. Beside that are your recent designs from every project; open one to go to its canvas, next to the agent that drew it.
 
 You can also open the **Design** tab of an agent from the Command Center (**Open the design canvas**) or with `/canvas` in the chat. With no designs yet, describe what you want and press **Ask the agent**; `/canvas <what to design>` does the same from the chat. The agent sets the design up with its design tools and draws each artboard; the canvas shows it as it is written.
 

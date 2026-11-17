@@ -94,5 +94,8 @@
   "designImported": "已导入“{{title}}”",
   "designImportedKept": "已导入“{{title}}”。{{files}} 和这个工作区已有的不一样，保留了工作区原来的。",
   "highFidelity": "高保真",
-  "briefPlaceholder": "想设计什么？"
+  "briefPlaceholder": "想设计什么？",
+  "searchProjects": "搜索项目",
+  "add": "添加",
+  "dropZipOnly": "请拖入从设计画布导出的 .zip。"
 }
