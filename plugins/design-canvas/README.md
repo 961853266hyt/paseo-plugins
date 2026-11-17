@@ -6,11 +6,13 @@ OVERVIEW.md, so change both together. -->
 A [Paseo](https://paseo.sh) plugin where humans and agents design together.
 Your agent draws designs as HTML artboards. You look at them side by side, move elements, fix text, tune values and point at what should change, and the agent revises. The designs are files in your workspace, so the agent that drew them can build them too.
 
-Open the **Design** tab of an agent from the Command Center (**Open the design canvas**) or with `/canvas` in the chat. With no designs yet, describe what you want and press **Ask the agent**; `/canvas <what to design>` does the same from the chat. The agent sets the design up with its design tools and draws each artboard; the canvas shows it as it is written.
+**Design** in the sidebar opens the home screen. Start a new design there: pick prototype (wireframe or high fidelity) or other, choose the project, describe what you want and press ↑; a new agent, set up like the last one you started, draws it while its chat and canvas open. Beside that are your recent designs from every project; open one to go to its canvas, next to the agent that drew it.
+
+You can also open the **Design** tab of an agent from the Command Center (**Open the design canvas**) or with `/canvas` in the chat. With no designs yet, describe what you want and press **Ask the agent**; `/canvas <what to design>` does the same from the chat. The agent sets the design up with its design tools and draws each artboard; the canvas shows it as it is written.
 
 On the canvas:
 
-- Switch designs from the menu at the top left. Hover a design there to rename or delete it; a deleted design's folder moves to `design/.trash/`, from where you can move it back.
+- Switch designs from the menu at the top left. A design's ⋯ button there renames, exports or deletes it. **Export** downloads the design as a zip laid out like `design/`; **Import design…** (in the same menu, on an empty canvas, and under **+** on the home screen, where you can also drop the zip) brings such a zip into the workspace: a taken name gets `-2`, and shared files the workspace already has are kept as they are. A deleted design's folder moves to `design/.trash/`, from where you can move it back.
 - Artboards sit side by side, variants of one screen in one row. Scroll to pan, Ctrl/Cmd+scroll or the buttons to zoom, Ctrl/Cmd+0 to fit, Shift+G for an 8 px layout grid.
 - **Move** (V) selects the nearest element the agent named and drags it; the arrow keys nudge it 1 px, 10 px with Shift. Drag an artboard by its title to move it. Double-click text (or press Enter on a selected element) to edit it in place: Enter keeps it, Esc puts it back. Moves and text are saved into the design's HTML and `design.json`, and Ctrl/Cmd+Z undoes them (Ctrl/Cmd+Shift+Z redoes).
 - **Hand** (H) pans with a drag anywhere, over the artboards too. Hold Space for it in any tool.
